@@ -38,9 +38,12 @@ python experiments/dp_figures.py            # Part 1 figures and tables (add 'bi
 python experiments/bench_engine.py          # throughput of the two engines
 python experiments/exp_tabular_2x3.py       # tabular methods, 90 runs x 200k episodes (about 1 h on 26 cores)
 python experiments/plot_tabular.py
+python experiments/exp_tabular_grid.py      # alpha x epsilon grid and decaying schedules (130 runs)
+python experiments/plot_schedule.py
 python experiments/exp_ntuple_small.py      # n-tuple TD(0) on 2x3, 2x4, 3x3 with exact validation
 python experiments/plot_ntuple_small.py
 python experiments/exp_4x4.py               # 4x4 training grid, 300k games per run (hours; '100000 rcs' for a short run)
+python experiments/exp_4x4.py 1000000 rect 0.1 2,3   # the two 1M-game runs of the best configuration
 python experiments/eval_4x4.py              # Monte Carlo evaluation of the checkpoints and of the heuristics
 python experiments/plot_4x4.py
 ```

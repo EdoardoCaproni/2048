@@ -354,9 +354,14 @@ def test_ntuple_small_board():
     p = hist[-1]['p_win']
     assert p > optimum - 0.1, (p, optimum)
     assert hist[-1]['rmse_w'] < 0.05, hist[-1]['rmse_w']
-    # the value of a winning afterstate is 1 and the learned policy can be
-    # used by the pure-Python side
-    assert net.greedy((5, 5, 0, 1, 0, 0), 'win') == ('left', 1.0)
+    # the value of a winning afterstate is 1 (on the trained optimistic net
+    # an unvisited afterstate may still be worth 1 and tie with the win, so
+    # the action is checked on a fresh zero-initialised net) and the learned
+    # policy can be used by the pure-Python side
+    assert net.greedy((5, 5, 0, 1, 0, 0), 'win')[1] == 1.0
+    fresh = nt.NTupleNet(2, 3, 64, tuples='full', symmetric=False,
+                         dtype=np.float64)
+    assert fresh.greedy((5, 5, 0, 1, 0, 0), 'win') == ('left', 1.0)
     frames = __import__('viz2048').play_episode(g, net.policy('win'), seed=0)
     assert frames[-1]['phase'] in ('won', 'lost')
 

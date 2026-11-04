@@ -172,3 +172,79 @@ noise.
 approximation error of small tuples (measured exactly on 2x3); constant
 $\alpha$ and $\epsilon$ leave the tabular methods short of the optimum at
 200k episodes (would need decaying schedules); the 4x4 optimum is unknown.
+
+## C. Numbers and findings of the report to have ready (final results, 4 Nov 2026)
+
+**31. The headline numbers.** 2x3/64: 27 022 states, 55 stages, optimal
+P(win) 0.939, corner 0.0007, greedy 0.0013, random 0.0002; optimal
+expected score 480; the optimal policy plays the corner move in 49.5% of
+its decisions. 2x4/128: 2.5M states, optimal 0.997, corner 0.004.
+3x3/64: 4.8M states, optimal 1.000, corner 0.434. 4x4: bound
+$11^{16}\approx 4.6\cdot10^{16}$ states.
+
+**32. Why is the corner rule so bad on small boards?** Table of
+exceptions: on six cells what matters is whether a merge survives the next
+spawn. The corner move often fills the last free cell with non-matching
+tiles, and the game survives only if a 4 spawns (prob. 0.1, hence the loss
+of 0.9). The optimal move sometimes takes the 32 *out* of the corner to
+line up a cascade 4+4, 8+8, 16+16, 32+32. Lesson: "a merge in reserve
+beats a tile kept in place".
+
+**33. Tabular results (200k episodes, alpha 0.1, eps 0.1).** Score
+reward: TD(0) afterstates 0.80, Q-learning 0.76, MC 0.74, others 0.71-0.74.
+Win reward from zero: all still learn (0.68-0.82) because the 2x3 board
+is small enough for epsilon-greedy to find wins. Optimistic $Q_0=1$:
+Q-learning 0.875 (RMSE 0.02), TD(0) 0.85. Larger constant alpha (0.2-0.4)
+wins at a fixed budget; decaying schedules help only n-step Sarsa (0.71
+to 0.76) and TD(0) afterstates (0.80 to 0.85, score 430/480).
+
+**34. Why is TD(0) on afterstates best?** One value per afterstate instead
+of 4 action values; the agent uses the known slide rule (deterministic
+part) but not the spawn distribution; the random tile is the only
+stochastic step, so the value propagates further per update. Also fewer
+parameters to learn (afterstates < state-action pairs).
+
+**35. Optimism versus epsilon-greedy.** Optimistic initial values
+explore every move once, then stop: with the greedy n-tuple learner on
+2x3 (win reward) init 1 gives 0.923 against 0.042 from zero. Epsilon-greedy
+explores forever and learns the values of the epsilon-greedy policy
+(on-policy TD): RMSE 226 points against 33 for the optimistic learner,
+P(win) 0.81 against 0.86.
+
+**36. Approximation error measured exactly.** Rows+cols+squares on 2x3:
+plateau at 0.83-0.85 (loss 0.09 of win probability) whatever the training
+length, while the full-board table reaches 0.923 and RMSE 0.016. This is
+what linear FA with those features cannot represent. 6-cell rectangles:
+more capacity, slower start, best at 300k games on 2x4 and 3x3.
+
+**37. Symmetric sampling.** Reads every tuple in all 4 (or 8) images of
+the board with shared weights, so $\hat V$ is invariant like $V^*$. On
+2x4/128 it cuts the RMSE 0.44 to 0.12 and raises agreement 0.45 to 0.62,
+but P(win) is the same (0.870 vs 0.860): the non-symmetric net never
+visits the mirror images, so their wrong values do not hurt its own
+play. Gain = 4x fewer weights for the same accuracy.
+
+**38. 4x4 results.** Score reward, greedy play, 300k games, alpha 0.1
+(normalised by the number of active features: effective per-weight step
+alpha/M). 6-tuples: mean score 66k, 2048 in 90%, 4096 in 67%, 8192 in
+15%, ~3000 moves per game. 4-tuples saturate at 45k / 80%. Heuristics:
+greedy 3 027, corner 2 564, random 1 084, never past 1024. alpha 0.5
+learns fastest early and ends worst. Szubert & Jaskowski 2014: 97% of 2048
+after 500k games (17 4-tuples, per-weight alpha 0.0025, i.e. our
+alpha ~0.04). Yeh 2017: 32768 in 31.75%. Jaskowski 2018 / Guei 2022:
+32768 in ~72%, scores > 600k.
+
+**39. Literature answers.** Always solvable? Open on 4x4; Slizkov 2023:
+256 with prob. 1, 2048 with prob. >= 0.99969. Not on small boards (P<1 as
+soon as $p_4>0$). Optimal strategy known? No: NP-hard on general boards
+(Langerman & Uno 2016), NP-hard without new tiles (Abdelkader et al.
+2016), PSPACE-complete variant (Mehta 2014); state space too large for DP.
+Good heuristics? Corner/snake/monotonicity/empty cells, strong only with
+search (expectimax, nneonneo) or learned n-tuple evaluations (TD, the
+report's method). Max tile 131072 = $2^{17}$.
+
+**40. What is "exact learning curve"?** Every checkpoint of a learned
+policy is evaluated by exact policy evaluation (backward pass with the
+learned greedy policy), and the learned values are compared with $V^*$
+weighted by the optimal occupancy. No Monte Carlo noise: differences of a
+few hundredths are real; the only randomness is in learning.
