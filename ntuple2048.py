@@ -120,8 +120,8 @@ def expand(base, rows, cols, symmetric):
                 img = tuple(s[n] for n in t)
                 if img not in images:
                     images.append(img)
-            if any(img in kept for img in images):
-                continue  # an image of an earlier base tuple
+            if any(set(img) == set(k) for img in images for k in kept):
+                continue  # covers the same cells as an image of an earlier base tuple
             kept.append(t)
             owner = len(kept) - 1
             for img in images:

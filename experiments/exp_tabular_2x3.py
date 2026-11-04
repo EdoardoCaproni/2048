@@ -41,7 +41,7 @@ def run(cfg):
     ev = rl.ExactEvaluator.cached(game, CACHE)
     env = Env2048(game, reward=cfg['reward'])
     t0 = time.perf_counter()
-    _, hist = rl.train(cfg['method'], env, N_EPISODES, alpha=ALPHA[cfg['method']],
+    _, hist = rl.train(cfg['method'], env, cfg['n_episodes'], alpha=ALPHA[cfg['method']],
                        epsilon=EPSILON, n=N_STEP, q_init=cfg['q_init'],
                        seed=cfg['seed'], eval_every=EVAL_EVERY, evaluator=ev)
     path = OUT / (run_name(cfg) + '.csv')
@@ -60,12 +60,14 @@ def main():
     t0 = time.perf_counter()
     rl.ExactEvaluator.cached(game, CACHE)  # build once, workers load it
     print(f'evaluator ready ({time.perf_counter() - t0:.1f} s)', flush=True)
+    n_episodes = N_EPISODES
     configs = [dict(method=m, reward=r, q_init=q, seed=s)
                for r, q in SETTINGS for m in rl.METHODS for s in SEEDS]
     if len(sys.argv) > 1:  # quick test: python exp_tabular_2x3.py quick
-        global N_EPISODES
-        N_EPISODES = 10_000
+        n_episodes = 10_000
         configs = configs[::15]
+    for cfg in configs:
+        cfg['n_episodes'] = n_episodes
     finals = run_grid(run, configs)
     save_csv(finals, OUT / 'summary.csv')
 

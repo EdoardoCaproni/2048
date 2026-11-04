@@ -335,6 +335,32 @@ def test_tabular_rl_converges_on_2x2():
     assert hist[-1]['score'] > 0.95 * best, (hist[-1]['score'], best)
 
 
+# ----------------------------------------------------------------------
+# ntuple2048: TD(0) on afterstates learns the 2x3 game
+# ----------------------------------------------------------------------
+def test_ntuple_small_board():
+    import numpy as np
+    import ntuple2048 as nt
+    import rl2048 as rl
+    g = Game2048(2, 3, target=64)
+    ev = rl.ExactEvaluator(g, with_score=False)
+    optimum = dp.start_value(g, ev.V_win)
+    # the full-board tuple is a lookup table of the afterstates: with the
+    # optimistic initialisation the greedy learner approaches the optimum
+    net = nt.NTupleNet(2, 3, 64, tuples='full', symmetric=False,
+                       dtype=np.float64, init=1.0)
+    hist = net.train(100_000, alpha=0.1, reward='win', seed=1, block=10_000,
+                     evaluator=nt.exact_evaluator(ev, g, 'win'))
+    p = hist[-1]['p_win']
+    assert p > optimum - 0.1, (p, optimum)
+    assert hist[-1]['rmse_w'] < 0.05, hist[-1]['rmse_w']
+    # the value of a winning afterstate is 1 and the learned policy can be
+    # used by the pure-Python side
+    assert net.greedy((5, 5, 0, 1, 0, 0), 'win') == ('left', 1.0)
+    frames = __import__('viz2048').play_episode(g, net.policy('win'), seed=0)
+    assert frames[-1]['phase'] in ('won', 'lost')
+
+
 if __name__ == '__main__':
     tests = [f for name, f in sorted(globals().items())
              if name.startswith('test_')]
