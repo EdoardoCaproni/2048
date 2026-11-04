@@ -7,6 +7,7 @@ random heuristics are played with the same engine. Outputs:
     results/4x4/benchmarks.csv    one row per heuristic
 Run from the project root:  python experiments/eval_4x4.py [n_games]
 """
+import csv
 import sys
 import time
 from pathlib import Path
@@ -116,9 +117,18 @@ def main():
               f"P(512) {bench[-1]['p_ge_512']:.3f}  P(1024) {bench[-1]['p_ge_1024']:.3f}  "
               f"P(2048) {bench[-1]['p_2048']:.4f}", flush=True)
     save_csv(bench, OUT / 'benchmarks.csv')
-    paths = sorted(OUT.glob('*/w_*.npz'))
-    rows = run_grid(eval_checkpoint, [str(p) for p in paths])
-    rows.sort(key=lambda r: (r['run'], r['trained_games']))
+    # checkpoints already evaluated with the same number of games are kept
+    done = {}
+    if (OUT / 'eval_all.csv').exists():
+        with open(OUT / 'eval_all.csv') as f:
+            for r in csv.DictReader(f):
+                if int(r['games']) == N_EVAL:
+                    done[(r['run'], int(r['trained_games']))] = r
+    paths = [p for p in sorted(OUT.glob('*/w_*.npz'))
+             if (p.parent.name, int(p.stem.split('_')[1])) not in done]
+    print(f'{len(done)} checkpoints already evaluated, {len(paths)} to do', flush=True)
+    rows = list(done.values()) + run_grid(eval_checkpoint, [str(p) for p in paths])
+    rows.sort(key=lambda r: (r['run'], int(r['trained_games'])))
     save_csv(rows, OUT / 'eval_all.csv')
 
 

@@ -41,13 +41,19 @@ def main():
                                      ('p_2048', 'P(2048 reached)', 'winrate', False)):
         fig, ax = plt.subplots()
         for name, runs in sorted(groups.items()):
-            x = [int(r['trained_games']) for r in runs[0]]
-            y = np.array([[float(r[key]) for r in rows] for rows in runs])
-            line, = ax.plot(x, y.mean(0), marker='o', ms=3, label=name)
-            ax.fill_between(x, y.min(0), y.max(0), color=line.get_color(), alpha=0.2)
+            # seeds may have different checkpoint lists (the 1M-game runs):
+            # statistics over the seeds that have each checkpoint
+            x = sorted({int(r['trained_games']) for rows in runs for r in rows})
+            def stat(col):
+                vals = [[float(r[col]) for rows in runs for r in rows
+                         if int(r['trained_games']) == g] for g in x]
+                return (np.array([np.mean(v) for v in vals]), np.array([min(v) for v in vals]),
+                        np.array([max(v) for v in vals]))
+            m, lo, hi = stat(key)
+            line, = ax.plot(x, m, marker='o', ms=3, label=name)
+            ax.fill_between(x, lo, hi, color=line.get_color(), alpha=0.2)
             if key == 'p_2048':
-                y4 = np.array([[float(r['p_ge_4096']) for r in rows] for rows in runs])
-                ax.plot(x, y4.mean(0), ls='--', color=line.get_color(), lw=1)
+                ax.plot(x, stat('p_ge_4096')[0], ls='--', color=line.get_color(), lw=1)
         for b in bench:
             ax.axhline(float(b[key]), ls=':', lw=1, c='gray')
             ax.annotate(b['policy'], (x[0], float(b[key])), fontsize=7, color='gray')
