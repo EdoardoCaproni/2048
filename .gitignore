@@ -1,0 +1,25 @@
+# course material and personal notes (48 MB, not part of the project)
+Materiali DPRL/
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.numba_cache/
+
+# experiment outputs that are large or regenerable
+results/**/*.npz
+results/**/*.pkl
+results/dp_cache/
+
+# latex build files
+*.aux
+*.log
+*.out
+*.toc
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
