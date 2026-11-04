@@ -29,7 +29,7 @@
 
 \title{2048 as a Markov Decision Problem:\\ exact dynamic programming on small boards and reinforcement learning on the real game\\[4pt]
 \large Project work --- Dynamic Programming and Reinforcement Learning, A.Y. 2024/25}
-\author{Edoardo Caproni (\todo{matricola}) \and Tommaso \todo{Surname} (\todo{matricola})}
+\author{Edoardo Caproni (141794) \and Tommaso \todo{Surname} (\todo{matricola})}
 \date{\today}
 
 \begin{document}
@@ -495,7 +495,7 @@ The questions a player asks about 2048 are the questions of this section: can th
 \appendix
 \section{Reproducibility}
 
-The code is at \todo{GitHub URL} (Python 3.11, numpy, matplotlib, numba). The modules are \texttt{game2048.py} (rules of the game and the Gymnasium-style environment; the reference implementation), \texttt{dp2048.py} (exact DP: reachable states by stage, backward recursion, policy evaluation, occupancy, Monte Carlo simulation), \texttt{fast2048.py} (the same rules on a 64-bit bitboard compiled with numba, about 50 times faster, checked move by move against the reference implementation by \texttt{test\_2048.py}), \texttt{rl2048.py} (tabular agents and the exact evaluator) and \texttt{ntuple2048.py} ($n$-tuple network and TD(0) on afterstates). Every number and figure of this report is produced by a script in \texttt{experiments/} and written to \texttt{results/}:
+The code is at \url{https://github.com/EdoardoCaproni/2048} (Python 3.11, numpy, matplotlib, numba). The modules are \texttt{game2048.py} (rules of the game and the Gymnasium-style environment; the reference implementation), \texttt{dp2048.py} (exact DP: reachable states by stage, backward recursion, policy evaluation, occupancy, Monte Carlo simulation), \texttt{fast2048.py} (the same rules on a 64-bit bitboard compiled with numba, about 50 times faster, checked move by move against the reference implementation by \texttt{test\_2048.py}), \texttt{rl2048.py} (tabular agents and the exact evaluator) and \texttt{ntuple2048.py} ($n$-tuple network and TD(0) on afterstates). Every number and figure of this report is produced by a script in \texttt{experiments/} and written to \texttt{results/}:
 
 \begin{center}\small
 \begin{tabular}{ll}

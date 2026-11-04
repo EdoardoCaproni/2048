@@ -1,6 +1,7 @@
 # 2048 as a Markov decision problem
 
 Project work for *Dynamic Programming and Reinforcement Learning* (University of Siena, A.Y. 2024/25).
+Repository: https://github.com/EdoardoCaproni/2048
 
 - **Part 1, exact DP**: small versions of 2048 (up to 3x3 cells) are solved exactly by a backward recursion over the tile sum, which is a clock of the game. The optimal policy is compared with the usual heuristics, and the role of chance is measured.
 - **Part 2, RL**: the model is forgotten and the game is learned from a simulator. Tabular Monte Carlo and TD control on the 2x3 board are validated against the exact values; an n-tuple network trained by TD(0) on afterstates plays the original 4x4 game.
