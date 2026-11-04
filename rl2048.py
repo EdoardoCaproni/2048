@@ -121,6 +121,10 @@ class TabularAgent:
         self.q_init = q_init
         self.Q = {}
 
+    @property
+    def reward(self):
+        return self.env.reward
+
     def q(self, s):
         row = self.Q.get(s)
         if row is None:
@@ -430,6 +434,21 @@ class ExactEvaluator:
         else:
             self.V_score = self.layers_score = None
 
+    @classmethod
+    def cached(cls, game, path, with_score=True):
+        """Load the evaluator from a pickle, or build it and save it."""
+        import pickle
+        from pathlib import Path
+        path = Path(path)
+        if path.exists():
+            with open(path, 'rb') as f:
+                return pickle.load(f)
+        ev = cls(game, with_score)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, 'wb') as f:
+            pickle.dump(ev, f, protocol=pickle.HIGHEST_PROTOCOL)
+        return ev
+
     def evaluate(self, agent):
         g = self.game
         pi = agent.policy()
@@ -438,7 +457,7 @@ class ExactEvaluator:
         if self.V_score is not None:
             out['score'] = dp.start_value(
                 g, dp.evaluate_policy(g, pi, 'score', self.layers_score))
-        V_ref = self.V_win if agent.env.reward == 'win' else self.V_score
+        V_ref = self.V_win if agent.reward == 'win' else self.V_score
         total = seen = agree = 0.0
         err_w = err = 0.0
         n_seen = 0
