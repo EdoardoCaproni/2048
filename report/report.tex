@@ -36,7 +36,7 @@
 \maketitle
 
 \begin{abstract}
-2048 is a single-player sliding-tile puzzle whose rules define a Markov decision problem with a known model. We solve small versions of the game exactly by dynamic programming, exploiting the fact that the sum of the tiles is a clock that turns the problem into a finite-horizon one, and we use the exact solution to measure how far the usual rules of thumb are from optimal play and how much of the outcome is luck. We then drop the knowledge of the model and learn to play from a simulator: tabular Monte Carlo and temporal-difference control on a board whose optimal values are known, and temporal-difference learning of an $n$-tuple network on afterstates on the original $4\times4$ board, where the state space ($\approx 10^{16}$ states) rules out exact methods. The exact values validate every learning algorithm. We close with what is known about the game itself: whether it can always be won, whether an optimal strategy is known, and which heuristics are good.
+2048 is a single-player sliding-tile puzzle whose rules define a Markov decision problem with a known model. We solve small versions of the game exactly by dynamic programming, exploiting the fact that the sum of the tiles is a clock that turns the problem into a finite-horizon one, and we use the exact solution to measure how far the usual rules of thumb are from optimal play and how much of the outcome is luck. We then drop the knowledge of the model and learn to play from a simulator: tabular Monte Carlo and temporal-difference control on a board whose optimal values are known, and temporal-difference learning of an $n$-tuple network on afterstates on the original $4\times4$ board, where the state space ($\approx 10^{16}$ states) rules out exact methods. Every learned policy is evaluated exactly against the dynamic-programming solution, which turns learning curves into exact measurements: on the $2\times3$ board the corner rule wins 0.07\% of the games, the optimal policy 93.9\%, the best tabular learner 88\% and a tabular TD(0) on afterstates 92\%; on the $4\times4$ board the $n$-tuple agent reaches the 2048 tile in 90\% of the games with a mean score twenty times that of the heuristics. We close with what is known about the game itself: whether it can always be won (open; the best lower bound is 0.99969), whether an optimal strategy is known (no; the problem is NP-hard on general boards), and which heuristics are good (search and learned $n$-tuple evaluations, the method of this report).
 \end{abstract}
 
 \section{Motivation}
@@ -203,7 +203,7 @@ $4\times4$ & 2048 & intractable & $\approx 4.6\cdot10^{16}$ & -- & -- & -- & --\
 
 This board is the reference problem of the project: 27\,022 states in 55 stages, solved in a fraction of a second, with an optimal win probability of 0.9393 that is neither trivially 0 nor 1. All the results below are exact unless stated otherwise.
 
-\paragraph{The heuristics are hopeless.} The corner rule wins 0.07\% of the games, the greedy rule 0.13\% and random play 0.02\%, against 93.9\% for the optimal policy. On this board the ``keep the big tiles in a corner'' advice is worthless: the optimal policy plays the corner move in only 49.5\% of its decisions (weighted by how often each decision occurs under optimal play). Table~\ref{tab:exceptions} lists the departures from the corner rule that matter most, ranked by expected visits times loss of win probability. \todo{comment on the boards: the corner rule refuses to use the free row/the move that keeps the two largest tiles adjacent, etc.}
+\paragraph{The heuristics are hopeless.} The corner rule wins 0.07\% of the games, the greedy rule 0.13\% and random play 0.02\%, against 93.9\% for the optimal policy. On this board the ``keep the big tiles in a corner'' advice is worthless: the optimal policy plays the corner move in only 49.5\% of its decisions (weighted by how often each decision occurs under optimal play). Table~\ref{tab:exceptions} lists the departures from the corner rule that matter most, ranked by expected visits times loss of win probability. The boards tell one story: with six cells, what decides the game is not where the largest tile sits but whether a merge is still available after the next spawn. In the first, fourth and sixth boards the corner move keeps the 32 in place and fills the last free cell with tiles that do not match their neighbours, so that the game continues only if the spawn is a 4 (probability $p_4=0.1$, hence the loss of 0.9); the optimal move merges the same pair in the other direction and leaves a matching pair for the next move. In the second and fifth boards the optimal move takes the largest tile \emph{out} of its corner to line up a cascade ($4+4$, $8+8$, $16+16$, $32+32=64$ in the second board; the two 32s in the same column, an immediate win, in the fifth). In the third board the corner rule postpones a merge of two 8s that is available now. A rigid move order cannot see any of this; the optimal policy is not ``anti-corner'' either, it simply ranks a merge kept in reserve above a tile kept in place.
 
 \begin{table}[ht]
 \centering
@@ -211,10 +211,15 @@ This board is the reference problem of the project: 27\,022 states in 55 stages,
 \toprule
 Importance & Board & Corner move & Optimal move & Loss\\
 \midrule
-\todo{from results/dp/table\_dp\_exceptions.csv}\\
+0.236 & $\begin{smallmatrix}16&4&2\\32&8&2\end{smallmatrix}$ & down & up & 0.90\\[1ex]
+0.098 & $\begin{smallmatrix}32&2&2\\16&8&4\end{smallmatrix}$ & left & right & 0.90\\[1ex]
+0.096 & $\begin{smallmatrix}8&8&4\\32&\cdot&2\end{smallmatrix}$ & down & left & 0.86\\[1ex]
+0.086 & $\begin{smallmatrix}16&2&\cdot\\32&8&2\end{smallmatrix}$ & right & up & 0.90\\[1ex]
+0.081 & $\begin{smallmatrix}2&32&2\\32&4&4\end{smallmatrix}$ & left & right & 0.91\\[1ex]
+0.079 & $\begin{smallmatrix}16&4&2\\32&2&2\end{smallmatrix}$ & down & up & 0.86\\
 \bottomrule
 \end{tabular}
-\caption{Most important departures of the optimal policy from the corner rule, $2\times3$ board, target 64.}
+\caption{Most important departures of the optimal policy from the corner rule, $2\times3$ board, target 64. Importance = expected number of visits of the state under the optimal policy times the loss; loss = $V^*(x)-Q^*(x,u_{\mathrm{corner}})$, the win probability given up by the corner move.}
 \label{tab:exceptions}
 \end{table}
 
@@ -352,7 +357,60 @@ Two tuple sets are used: \textbf{rows, columns and $2\times2$ squares} ($n=4$; o
 
 \subsubsection{Validation on the small boards}
 
-\todo{Figures fig\_nt\_2x3\_64\_pwin, fig\_nt\_2x4\_128\_pwin, fig\_nt\_3x3\_64\_pwin and table\_ntuple\_small.csv. Points: (i) the full-board table converges to the optimum (RMSE to 0) only with optimistic initialisation or exploration: without, the greedy learner locks on the first rewarded moves; (ii) the row/column/square features plateau below the optimum on 2x3 (approximation error of the architecture, quantify), the 6-tuples do better; (iii) on 2x4/128 and 3x3/64 the zero-initialised learner starts as the corner rule (36\%, 43\%) and climbs to near 1; weighted RMSE; (iv) effect of symmetric sampling.}
+Before the real game, the algorithm is run on the three small boards where the exact solution is known, so that the learned values and the learned policy can be compared with $V^*$ and $\pi^*$ exactly, as in Section~\ref{sec:tabular}. Every configuration is trained for 300\,000 games with $\alpha=0.1$ (3 seeds on $2\times3$, 2 on $2\times4$, 1 on $3\times3$) and the checkpoints are evaluated with the exact DP: win probability of the greedy policy, share of the optimal policy's decisions in which the greedy action is optimal, and weighted RMSE of $\max_u[r+\hat V(M(x,u))]$ against $V^*$ under the optimal occupancy (win objective only; the score-objective DP is available on $2\times3$ only). Figure~\ref{fig:ntsmall} and Table~\ref{tab:ntsmall} summarise the runs.
+
+\begin{figure}[ht]
+\centering
+\fig[0.49\textwidth]{fig_nt_2x3_64_pwin}\hfill
+\fig[0.49\textwidth]{fig_nt_2x3_64_rmse}\\[1ex]
+\fig[0.49\textwidth]{fig_nt_2x4_128_pwin}\hfill
+\fig[0.49\textwidth]{fig_nt_3x3_64_pwin}
+\caption{$n$-tuple networks on the small boards (mean over seeds, band = min--max). Top: $2\times3$ board, target 64, exact win probability of the greedy policy and weighted RMSE of the learned values against $V^*$ (for the score reward the values are scores, in the range 0--480). Bottom: $2\times4$ board, target 128, and $3\times3$ board, target 64. Dashed: optimal; dotted: corner rule.}
+\label{fig:ntsmall}
+\end{figure}
+
+\begin{table}[ht]
+\centering\small
+\begin{tabular}{llllcccc}
+\toprule
+Board & Tuples & Sym. & Reward & $\hat V_0$ & $P(\text{win})$ & agree & RMSE\\
+\midrule
+$2\times3$/64 & full board (tabular) & -- & win & 1 & \textbf{0.923} & 0.85 & 0.016\\
+              & full board (tabular) & -- & win & 0 & 0.042 & 0.51 & 0.90\\
+              & rows, cols, squares & yes & win & 1 & 0.845 & 0.80 & 0.10\\
+              & rows, cols, squares & no & win & 1 & 0.839 & 0.71 & 0.22\\
+              & rows, cols, squares & yes & score & 0 & 0.826 & 0.77 & --\\
+              & full board (tabular) & -- & score & 0 & 0.007 & 0.52 & --\\
+              & full board, $\epsilon=0.05$ & -- & score & 0 & 0.812 & 0.62 & --\\
+              & full board (tabular) & -- & score & 480 & 0.856 & 0.73 & --\\
+              & \multicolumn{4}{l}{optimal / corner rule} & 0.939 / 0.001\\
+\midrule
+$2\times4$/128 & rows, cols, squares & yes & win & 0 & 0.860 & 0.62 & 0.12\\
+               & rows, cols, squares & yes & win & 1 & 0.852 & 0.63 & 0.11\\
+               & rows, cols, squares & no & win & 0 & \textbf{0.870} & 0.45 & 0.44\\
+               & $2\times3$ rectangles & yes & win & 0 & 0.833 & 0.58 & 0.19\\
+               & rows, cols, squares & yes & score & 0 & 0.828 & 0.61 & --\\
+               & $2\times3$ rectangles & yes & score & 0 & 0.867 & 0.60 & --\\
+               & \multicolumn{4}{l}{optimal / corner rule} & 0.997 / 0.004\\
+\midrule
+$3\times3$/64 & rows, cols, squares & yes & win & 0 & 0.986 & 0.89 & 0.08\\
+              & rows, cols, squares & no & win & 0 & 0.995 & 0.92 & 0.10\\
+              & $2\times3$ rectangles & yes & win & 0 & 0.982 & 0.90 & 0.35\\
+              & rows, cols, squares & yes & score & 0 & 0.982 & 0.93 & --\\
+              & $2\times3$ rectangles & yes & score & 0 & \textbf{0.998} & 0.93 & --\\
+              & \multicolumn{4}{l}{optimal / corner rule} & 1.000 / 0.434\\
+\bottomrule
+\end{tabular}
+\caption{$n$-tuple networks on the small boards after 300\,000 training games ($\alpha=0.1$, greedy play unless stated): exact win probability of the greedy policy, share of optimal decisions, weighted RMSE of the values against $V^*$ (win reward only). $\hat V_0$ is the initial value of every afterstate.}
+\label{tab:ntsmall}
+\end{table}
+
+\begin{itemize}[leftmargin=*]
+\item \textbf{The tabular network converges, but only with exploration.} On $2\times3$ the full-board table with the win reward and optimistic initial values ($\hat V_0=1$) reaches a win probability of 0.923 against the optimum 0.939, with the values within 0.016 RMSE of $V^*$ and still improving at 300\,000 games: this is the tabular TD(0) of Table~\ref{tab:tabular} with a different exploration mechanism, and it gets closer to the optimum because optimism explores every move once and then follows the best, instead of wasting a fixed share $\epsilon$ of the moves forever. With $\hat V_0=0$ the same learner wins 0.7\% of the games with the score reward and 4\% with the win reward: a greedy learner that starts from zero locks on the first moves that ever gave a reward (the corner rule wins one game in 1\,500 on this board), and the random tiles alone do not provide enough exploration to leave them. Either optimism ($\hat V_0=480$, the optimal score: 0.856) or $\epsilon$-greedy play (0.812) repairs it; the latter learns the values of the $\epsilon$-greedy policy, not of the greedy one, which shows in its RMSE (226 points against 33 for the optimistic learner).
+\item \textbf{Approximation error.} With the rows, columns and squares of the $2\times3$ board (two 3-cell rows, three 2-cell columns and two $2	imes2$ squares: 4 tables after symmetry merging, 14 active features), the learner rises faster than the table (0.80 against 0.22 after 3\,000 games, because every update is shared by all the afterstates with the same rows and columns) but plateaus at 0.83--0.85, a loss of 0.09 in win probability that no amount of training recovers: the exact measure of what these features cannot represent on this board. The score reward gives the same plateau (0.826), consistent with the 98\% agreement of the two objectives found in Part~1.
+\item \textbf{Harder boards, no optimism needed.} On $2\times4$/128 the corner rule wins 0.4\% of the games and on $3\times3$/64 43\%; the zero-initialised greedy learner climbs from there to 0.86 and to 0.99 respectively. Features that generalise are what the tabular learner lacked: the rare early wins update every afterstate that shares a row, a column or a square with the winning line, and after 10\,000 games the $2\times4$ agent already wins 60--70\% of the games (optimism, $\hat V_0=1$, only speeds this up: 0.84 at 10\,000 games). The 6-cell rectangles, with $16^6$ entries per table, start much slower (0.13 after 10\,000 games on $2\times4$) and are still rising at 300\,000 games, where they are the best configuration with the score reward on both boards (0.867 and 0.998): more capacity, more games needed, the trade-off that the $4\times4$ experiment confirms on a larger scale. The remaining gap to the optimum on $2\times4$/128 (0.87 against 0.997) is of the same order as the plateau on $2\times3$.
+\item \textbf{Symmetric sampling} improves the values much more than the policy. On $2\times4$/128 it cuts the RMSE from 0.44 to 0.12 and raises the share of optimal decisions from 0.45 to 0.62, but the win probability of the two greedy policies is the same (0.870 and 0.860): a network without symmetric sampling only learns the orientations that its own play produces, and its values on the mirror images, which the optimal occupancy visits and the RMSE counts, are wrong, but its own policy never needs them. Symmetric sampling pays off as a four-fold reduction of the number of weights to learn, with the same accuracy, which is what matters on the $4\times4$ board.
+\end{itemize}
 
 \subsubsection{The original $4\times4$ game}
 
@@ -424,12 +482,35 @@ The questions a player asks about 2048 are the questions of this section: can th
 
 \section{Discussion and conclusions}
 
-\todo{To write once all results are in. Points: what the exact values say about the heuristics; the DP as a tool to validate RL (exact learning curves); which RL methods worked, why (dense reward, exploration, afterstates halve the branching); the approximation error of n-tuple networks measured exactly on small boards; the 4x4 results versus the literature; what remains (luck bounds the achievable win probability; the optimal policy of the real game is unknown).}
+\paragraph{What dynamic programming taught us about the game.} The tile sum is a clock, so 2048 on any board is a finite-horizon problem whose exact solution is one backward pass over the reachable states, with no need for value or policy iteration and no improper policies to worry about. On the boards where this pass is affordable (up to $3\times3$, five million states) the exact values overturn the folk wisdom of the game: the corner rule, the greedy rule and random play win a fraction of a percent of the games on $2\times3$/64 and $2\times4$/128 where the optimal player wins 94\% and 99.7\%, and the optimal policy agrees with the corner rule in only half of its decisions. Table~\ref{tab:exceptions} shows why: on a cramped board the value of a position is governed by whether a merge survives the next spawn, which a fixed move order ignores. Luck bounds every player: as soon as $p_4>0$ the optimal win probability is below one (Figure~\ref{fig:p4}), and the sensitivity to $p_4$ is large. Finally, the exact state counts (Table~\ref{tab:states}) make the curse of dimensionality concrete: $4\times4$ is four orders of magnitude beyond the last solvable board, and the complexity results of Section~\ref{sec:literature} say that no shortcut is to be expected.
+
+\paragraph{Dynamic programming as a measuring instrument for reinforcement learning.} The second use of the exact solution was to evaluate every learned policy exactly instead of by simulation, and every learned value function against $V^*$ under the optimal occupancy. The learning curves of Sections~\ref{sec:tabular} and~\ref{sec:ntuple} therefore have no Monte Carlo noise: differences of a few hundredths between methods are real, and the only randomness is the learning itself. This made three things visible that simulation would have blurred: the plateau of the $n$-tuple architecture (0.09 of win probability on $2\times3$ with rows, columns and squares, independent of the training length), the fact that symmetric sampling improves the values four-fold without improving the policy, and the gap between a learned $Q$ and the greedy policy it induces (0.6 agreement with $\pi^*$ and 0.8 of the optimal win probability at the same time).
+
+\paragraph{What worked in reinforcement learning, and why.} With a dense reward (the score) every tabular method of the course learns a reasonable policy on $2\times3$ within 200\,000 episodes; with the sparse win reward and zero initial values the greedy learner locks on the first rewarded moves, and optimistic initialisation, not $\epsilon$-greedy play, is what repairs it, because it explores every move once and then stops. Q-learning was the best action-value method (0.88 with optimism) and TD(0) on afterstates the best method overall (0.85 tabular, 0.92 with the tabular $n$-tuple network), for a structural reason: the afterstate is the state before the random tile, so one value per afterstate replaces four action values, the agent needs the slide rule but not the spawn distribution, and the value propagates one deterministic step further at each update. Larger constant step sizes won within a fixed budget and decaying schedules only helped the methods that propagate credit further per update. On the $4\times4$ board the semi-gradient TD(0) of \cite[\S9.3]{sutton2018} with an $n$-tuple network reached 2048 in 90\% of the games and a mean score of 66\,000, twenty times the best heuristic, after 300\,000 games and no exploration other than the random tiles; the published players that reach 32768 use the same algorithm with larger tuples, more games and better step-size control, so what separates this project from the state of the art is engineering, not method.
+
+\paragraph{What remains open.} Whether the original game can be won with probability one is unknown (the best lower bound is 0.99969), the optimal policy is out of reach of exact methods and the problem is NP-hard on general boards, so the strongest strategies are learned approximations, validated by play rather than by proof. Within this project, the natural next steps are longer training of the 6-tuple network with temporal coherence learning, a shallow expectimax search on top of the learned values, and a direct measure, on the small boards, of how far the plateau of the architecture is from the best achievable with the same features (the projection of $V^*$ on the feature space), which the exact solution makes possible.
 
 \appendix
 \section{Reproducibility}
 
-The code is at \todo{GitHub URL}. All the numbers and figures of this report are produced by the scripts in \texttt{experiments/} from the modules \texttt{game2048.py} (rules, Gymnasium-style environment), \texttt{dp2048.py} (exact DP), \texttt{fast2048.py} (bitboard engine compiled with numba, checked move by move against the reference engine by \texttt{test\_2048.py}), \texttt{rl2048.py} (tabular methods, exact evaluator) and \texttt{ntuple2048.py} ($n$-tuple network). \todo{list the commands}
+The code is at \todo{GitHub URL} (Python 3.11, numpy, matplotlib, numba). The modules are \texttt{game2048.py} (rules of the game and the Gymnasium-style environment; the reference implementation), \texttt{dp2048.py} (exact DP: reachable states by stage, backward recursion, policy evaluation, occupancy, Monte Carlo simulation), \texttt{fast2048.py} (the same rules on a 64-bit bitboard compiled with numba, about 50 times faster, checked move by move against the reference implementation by \texttt{test\_2048.py}), \texttt{rl2048.py} (tabular agents and the exact evaluator) and \texttt{ntuple2048.py} ($n$-tuple network and TD(0) on afterstates). Every number and figure of this report is produced by a script in \texttt{experiments/} and written to \texttt{results/}:
+
+\begin{center}\small
+\begin{tabular}{ll}
+\toprule
+Script & Produces\\
+\midrule
+\texttt{dp\_figures.py} & Section~\ref{sec:dp-results}: Tables~\ref{tab:states}, \ref{tab:exceptions}, Figures~\ref{fig:stages}--\ref{fig:p4}\\
+\texttt{exp\_tabular\_2x3.py}, \texttt{plot\_tabular.py} & Section~\ref{sec:tabular}: Table~\ref{tab:tabular}, Figure~\ref{fig:tabular} (90 runs, 45 min on 26 cores)\\
+\texttt{exp\_tabular\_grid.py}, \texttt{plot\_schedule.py} & Figures~\ref{fig:grid}, \ref{fig:schedule} (130 runs)\\
+\texttt{exp\_ntuple\_small.py}, \texttt{plot\_ntuple\_small.py} & Section~\ref{sec:ntuple}, small boards (41 runs, then the exact evaluations)\\
+\texttt{exp\_4x4.py}, \texttt{eval\_4x4.py}, \texttt{plot\_4x4.py} & Table~\ref{tab:4x4}, Figure~\ref{fig:4x4} (14 runs of one hour)\\
+\texttt{bench\_engine.py} & throughput of the two engines\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The notebook \texttt{2048\_DP.ipynb} walks through Part 1 interactively, and \texttt{viz2048.py} animates any of the policies playing.
 
 \bibliographystyle{plain}
 \bibliography{refs}
