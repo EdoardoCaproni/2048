@@ -86,8 +86,11 @@ def main():
         game, dp.evaluate_policy(game, score_policy, layers=layers))
     summary['2x3_64']['score_win_agreement'] = dp.compare_with_heuristic(
         game, V, table, layers, score_policy)['share']
+    # past the target the win-optimal policy is undefined: play score-optimally
+    def win_then_score(board, moves):
+        return {table.get(board, table_s.get(board)): 1.0} if moves else {}
     summary['2x3_64']['score_of_win_policy'] = dp.start_value(
-        game, dp.evaluate_policy(game, dp.table_policy(table), 'score'))
+        game, dp.evaluate_policy(game, win_then_score, 'score'))
 
     # sensitivity to p4
     p4_values = [0.0, 0.05, 0.1, 0.2, 0.3, 0.5]

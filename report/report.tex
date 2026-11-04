@@ -25,6 +25,7 @@
 \newcommand{\U}{\mathcal{U}}
 \newcommand{\act}[1]{\textsf{#1}}
 \newcommand{\todo}[1]{\textcolor{red}{[#1]}}
+\newcommand{\fig}[2][\textwidth]{\IfFileExists{figures/#2.pdf}{\includegraphics[width=#1]{#2}}{\framebox[#1]{\rule{0pt}{3cm}\nolinkurl{#2} (pending)}}}
 
 \title{2048 as a Markov Decision Problem:\\ exact dynamic programming on small boards and reinforcement learning on the real game\\[4pt]
 \large Project work --- Dynamic Programming and Reinforcement Learning, A.Y. 2024/25}
@@ -171,26 +172,26 @@ $2\times2$ & 32 & 422 & 625 & 0.0 & 0.0829 & 0.0000 & 0.0000\\
 $2\times3$ & 32 & 11\,222 & 15\,625 & 0.2 & 0.9999 & 0.2854 & 0.3365\\
 $2\times3$ & 64 & 27\,022 & 46\,656 & 0.3 & 0.9393 & 0.0007 & 0.0013\\
 $2\times3$ & 128 & 52\,486 & 117\,649 & 0.6 & 0.0570 & 0.0000 & 0.0000\\
-$2\times4$ & 64 & 881\,260 & 1\,679\,616 & 36 & 0.99999 & 0.361 & 0.330\\
-$2\times4$ & 128 & 2\,525\,754 & 5\,764\,801 & \todo{t} & \todo{v} & \todo{v} & \todo{v}\\
-$3\times3$ & 64 & 4\,820\,069 & 10\,077\,696 & 240 & 1.0000 & 0.434 & 0.440\\
+$2\times4$ & 64 & 881\,260 & 1\,679\,616 & 100 & 0.99999 & 0.3611 & 0.3295\\
+$2\times4$ & 128 & 2\,525\,754 & 5\,764\,801 & 272 & 0.9973 & 0.0044 & 0.0037\\
+$3\times3$ & 64 & 4\,820\,069 & 10\,077\,696 & 240 & 1.0000 & 0.4341 & 0.4402\\
 $3\times3$ & 128 & 17\,244\,751 & 40\,353\,607 & -- & -- & -- & --\\
 $4\times4$ & 2048 & intractable & $\approx 4.6\cdot10^{16}$ & -- & -- & -- & --\\
 \bottomrule
 \end{tabular}
-\caption{Reachable decision states (target not yet created), naive bound, time of the backward recursion in pure Python, and exact win probability of the optimal policy and of two heuristics ($p_4=0.1$). The random policy wins with probability 0.1218, 0.0005, 0.0921, 0.0002, 0.0000, 0.027 and 0.092 on the first seven boards. \todo{fill 2x4/128 from results/dp/table\_dp\_boards.csv}}
+\caption{Reachable decision states (target not yet created), naive bound, time of the backward recursion in pure Python, and exact win probability of the optimal policy and of two heuristics ($p_4=0.1$). The random policy wins with probability 0.1218, 0.0005, 0.0921, 0.0002, 0.0000, 0.0274, 0.0000 and 0.0921 on the first eight boards.}
 \label{tab:states}
 \end{table}
 
 \begin{figure}[ht]
 \centering
 \begin{subfigure}[b]{0.48\textwidth}
-\includegraphics[width=\textwidth]{fig_dp_stages}
+\fig{fig_dp_stages}
 \caption{States per stage, $2\times3$ board, target 64.}
 \label{fig:stages}
 \end{subfigure}\hfill
 \begin{subfigure}[b]{0.48\textwidth}
-\includegraphics[width=\textwidth]{fig_dp_states}
+\fig{fig_dp_states}
 \caption{Reachable states of the small boards.}
 \label{fig:states}
 \end{subfigure}
@@ -224,12 +225,12 @@ Importance & Board & Corner move & Optimal move & Loss\\
 \begin{figure}[ht]
 \centering
 \begin{subfigure}[b]{0.48\textwidth}
-\includegraphics[width=\textwidth]{fig_dp_length}
+\fig{fig_dp_length}
 \caption{Game length under the optimal policy.}
 \label{fig:length}
 \end{subfigure}\hfill
 \begin{subfigure}[b]{0.48\textwidth}
-\includegraphics[width=\textwidth]{fig_dp_p4}
+\fig{fig_dp_p4}
 \caption{Optimal $P(\text{win})$ as a function of $p_4$.}
 \label{fig:p4}
 \end{subfigure}
@@ -269,19 +270,19 @@ Every method is run for 200\,000 episodes with $\alpha=0.1$, $\epsilon=0.1$ and 
 \begin{figure}[ht]
 \centering
 \begin{subfigure}[b]{0.48\textwidth}
-\includegraphics[width=\textwidth]{fig_tab_pwin_score_q0}
+\fig{fig_tab_pwin_score_q0}
 \caption{Score reward.}
 \end{subfigure}\hfill
 \begin{subfigure}[b]{0.48\textwidth}
-\includegraphics[width=\textwidth]{fig_tab_pwin_win_q0}
+\fig{fig_tab_pwin_win_q0}
 \caption{Win reward, zero initial values.}
 \end{subfigure}\\[4pt]
 \begin{subfigure}[b]{0.48\textwidth}
-\includegraphics[width=\textwidth]{fig_tab_pwin_win_q1}
+\fig{fig_tab_pwin_win_q1}
 \caption{Win reward, optimistic initial values.}
 \end{subfigure}\hfill
 \begin{subfigure}[b]{0.48\textwidth}
-\includegraphics[width=\textwidth]{fig_tab_rmse_win_q1}
+\fig{fig_tab_rmse_win_q1}
 \caption{Value error, win reward, optimistic initial values.}
 \end{subfigure}
 \caption{Tabular methods on the $2\times3$ board, target 64: exact win probability of the greedy policy (mean over 5 seeds, band = min--max) and weighted RMSE of the learned values.}
