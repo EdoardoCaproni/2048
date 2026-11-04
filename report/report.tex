@@ -289,7 +289,37 @@ Every method is run for 200\,000 episodes with $\alpha=0.1$, $\epsilon=0.1$ and 
 \label{fig:tabular}
 \end{figure}
 
-\paragraph{Results.} \todo{From results/tabular/table\_tabular\_final.csv and Figure~\ref{fig:tabular}: which methods reach the optimum, how fast, differences between on-policy and off-policy methods (Q-learning learns the optimal values while Sarsa and Expected Sarsa learn the values of the $\epsilon$-greedy policy, visible in the RMSE), the n-step method, the afterstate method (fewer parameters: one value per afterstate instead of four per state); the sparse win reward from zero initial values versus optimistic initialisation.}
+\paragraph{Results.} Figure~\ref{fig:tabular} and Table~\ref{tab:tabular} summarise the 90 runs. Every method learns to play far better than any heuristic from the simulator alone: after 200\,000 episodes the exact win probability of the greedy policies lies between 0.68 and 0.87, against 0.0007 for the corner rule, and the expected score between 275 and 412 against a maximum of 480. None reaches the optimum 0.9393 within the budget: with constant $\alpha=0.1$ and $\epsilon=0.1$ the estimates keep fluctuating and the behaviour policy keeps making exploratory mistakes, which the on-policy methods learn to fear. The ranking is consistent with the theory of the course.
+\begin{itemize}[leftmargin=*]
+\item \textbf{Q-learning is the best action-value method in every setting} (0.757, 0.816, 0.875), because it is off-policy: its target $\max_a Q(x',a)$ estimates $q_*$ whatever the exploration, whereas Sarsa and Expected Sarsa estimate the value of the $\epsilon$-greedy policy, which is lower. The error of the values against $V^*$ makes this visible: with the win reward and optimistic initialisation, the weighted RMSE of Q-learning is 0.021, that of Sarsa 0.158 and of Expected Sarsa 0.148 (Figure~\ref{fig:tabular}d), although their greedy policies are not far apart. Expected Sarsa beats Sarsa in every setting (lower variance of the target), and 3-step Sarsa beats both in two of three.
+\item \textbf{TD(0) on afterstates is the best or second best everywhere} (0.796, 0.799, 0.848) and learns fastest (Figure~\ref{fig:tabular}a--c) with the fewest parameters: one value per afterstate instead of four per state, 10\,478 entries against 12\,464 states seen by Q-learning with the score reward. Knowing the deterministic half of the move lets it compare the four moves through their afterstates, which several moves and states share.
+\item \textbf{Monte Carlo control learns fast at first and then slowly}: it leads during the first 20\,000 episodes with the score reward, but ends last or second to last, because it does not bootstrap and the returns of 30-move episodes are noisy.
+\item \textbf{The sparse win reward is slower but not hopeless.} From zero initial values the agents play the corner rule at first (the tie-break of the greedy choice), win nothing for about 10\,000 episodes, and then take off once the $\epsilon$-greedy exploration has stumbled on a few wins whose value propagates backwards (Figure~\ref{fig:tabular}b). Optimistic initial values ($Q_0=1$) remove the dead start and leave no state unvisited (the share of the optimal policy's visits to unseen boards drops from 15--20\% to 0), and they give the best final results for Q-learning and TD(0) on afterstates. The two on-policy Sarsa methods gain less: under optimism the exploring behaviour is more erratic, and that is what they evaluate.
+\item \textbf{The score reward is a good surrogate}: the greedy policies learned from the score win 71--80\% of the games although they never observed a win signal, in line with the 97.9\% agreement of the two optimal policies measured in Section~\ref{sec:dp-results}.
+\end{itemize}
+\todo{Add the schedule experiment (decaying alpha and epsilon) and the alpha x epsilon grid: results/tabular\_grid.}
+
+\begin{table}[ht]
+\centering\small
+\begin{tabular}{lrrrrrrrrr}
+\toprule
+& \multicolumn{3}{c}{score reward} & \multicolumn{3}{c}{win reward, $Q_0=0$} & \multicolumn{3}{c}{win reward, $Q_0=1$}\\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}\cmidrule(lr){8-10}
+Method & $P(\text{win})$ & score & agree & $P(\text{win})$ & agree & RMSE & $P(\text{win})$ & agree & RMSE\\
+\midrule
+MC control        & 0.738 & 387 & 0.63 & 0.676 & 0.56 & 0.62 & 0.711 & 0.56 & 0.54\\
+Sarsa             & 0.713 & 367 & 0.53 & 0.753 & 0.54 & 0.68 & 0.726 & 0.68 & 0.16\\
+Q-learning        & 0.757 & 383 & 0.54 & 0.816 & 0.56 & 0.53 & 0.875 & 0.78 & 0.02\\
+Expected Sarsa    & 0.737 & 376 & 0.53 & 0.787 & 0.55 & 0.66 & 0.761 & 0.69 & 0.15\\
+3-step Sarsa      & 0.714 & 381 & 0.59 & 0.754 & 0.57 & 0.62 & 0.795 & 0.70 & 0.33\\
+TD(0) afterstates & 0.796 & 412 & 0.63 & 0.799 & 0.60 & 0.62 & 0.848 & 0.71 & 0.30\\
+\midrule
+optimal (DP)      & 0.939 & 480 & 1 & 0.939 & 1 & 0 & 0.939 & 1 & 0\\
+\bottomrule
+\end{tabular}
+\caption{Tabular methods on the $2\times3$ board, target 64, after 200\,000 episodes ($\alpha=0.1$, $\epsilon=0.1$, mean over 5 seeds; the standard deviation over seeds is at most 0.025). Exact win probability and expected score of the greedy policy, share of the optimal policy's decisions in which the greedy action is optimal, and weighted RMSE of the learned state values against $V^*$ (win objective).}
+\label{tab:tabular}
+\end{table}
 
 \subsection{Function approximation: $n$-tuple networks}
 \label{sec:ntuple}

@@ -1,0 +1,7 @@
+{
+  "tuples": "rect",
+  "alpha": 0.1,
+  "seed": 1,
+  "n_games": 300000,
+  "net": "NTupleNet(4x4, target 2048, rect, symmetric=True, 2 tables x 16^6, 16 features, 33,554,432 weights)"
+}

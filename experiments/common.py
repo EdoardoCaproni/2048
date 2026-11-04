@@ -66,7 +66,7 @@ def savefig(fig, path):
 def run_grid(fn, configs, processes=None):
     """Run fn(config) for every config in parallel and return the list
     of results in order. Each config must be picklable (e.g. a dict)."""
-    processes = processes or max(1, (os.cpu_count() or 2) - 2)
+    processes = processes or int(os.environ.get('N_PROCS', 0)) or max(1, (os.cpu_count() or 2) - 2)
     t0 = time.perf_counter()
     with Pool(processes) as pool:
         results = pool.map(fn, configs, chunksize=1)
