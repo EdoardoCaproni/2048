@@ -165,6 +165,176 @@ def test_viz():
     assert animate(g, frames[:5]).to_jshtml().count('data:image/png') == 5
 
 
+# ----------------------------------------------------------------------
+# fast2048: the bitboard engine must reproduce game2048 exactly
+# ----------------------------------------------------------------------
+def test_fast_tables():
+    """Every row table entry agrees with slide_line."""
+    import fast2048 as fb
+    for w in (2, 3, 4):
+        for row in range(65536):
+            cells = [(row >> (4 * c)) & 0xF for c in range(4)]
+            if any(cells[w:]):
+                continue
+            line = tuple(cells[:w])
+            moved, p = slide_line(line)
+            if max(moved) > 15:
+                continue  # overflow guard, not reachable in a game
+            got = fb.LEFT[w - 2, row]
+            assert tuple((int(got) >> (4 * c)) & 0xF for c in range(w)) == moved
+            assert fb.PTS_LEFT[w - 2, row] == p
+            moved, p = slide_line(line[::-1])
+            moved = moved[::-1]
+            got = fb.RIGHT[w - 2, row]
+            assert tuple((int(got) >> (4 * c)) & 0xF for c in range(w)) == moved
+            assert fb.PTS_RIGHT[w - 2, row] == p
+
+
+def test_fast_transpose():
+    import fast2048 as fb
+    rng = random.Random(0)
+    for _ in range(2000):
+        board = tuple(rng.randrange(16) for _ in range(16))
+        x = fb.encode(board, 4, 4)
+        assert fb.decode(x, 4, 4) == board
+        assert fb.decode(fb.transpose(x), 4, 4) == _transpose(board, 4)
+
+
+def test_fast_moves_match_game():
+    """Random games: every move, legal set, terminal and win flag agree."""
+    import fast2048 as fb
+    rng = random.Random(7)
+    for rows, cols, target in ((2, 3, 64), (2, 4, 64), (3, 3, 64),
+                               (4, 4, 2048)):
+        g = Game2048(rows, cols, target=target)
+        for _ in range(60):
+            board = g.sample_initial(rng)
+            while True:
+                x = fb.encode(board, rows, cols)
+                assert fb.decode(x, rows, cols) == board
+                assert fb.tile_sum(x, rows, cols) == g.tile_sum(board)
+                assert (1 << fb.max_exp(x, rows, cols)) == max(g.max_tile(board), 1)
+                assert fb.count_empty(x, rows, cols) == board.count(0)
+                assert fb.is_win(x, rows, cols, g.target_exp) == g.is_win(board)
+                for a, action in enumerate(ACTIONS):
+                    after, pts, changed = fb.move(x, a, rows, cols)
+                    ref_after, ref_pts = g.afterstate(board, action)
+                    assert fb.decode(after, rows, cols) == ref_after, (board, action)
+                    assert pts == ref_pts
+                    assert changed == (ref_after != board)
+                assert fb.legal_actions(x, rows, cols) == g.legal_actions(board)
+                assert fb.is_terminal(x, rows, cols) == g.is_game_over(board)
+                moves = g.moves(board)
+                if not moves:
+                    break
+                _, after, _ = rng.choice(moves)
+                if g.is_win(after):
+                    break
+                board = g.sample_spawn(after, rng)
+
+
+def _check_frequencies(counts, expected, n):
+    """counts: {outcome: count}; expected: {outcome: probability}."""
+    assert set(counts) <= set(expected), set(counts) - set(expected)
+    for outcome, p in expected.items():
+        freq = counts.get(outcome, 0) / n
+        assert abs(freq - p) < 4 * (p * (1 - p) / n) ** 0.5 + 1e-12, (outcome, freq, p)
+
+
+def test_fast_spawn_distribution():
+    import fast2048 as fb
+    from collections import Counter
+    fb.seed(1)
+    g = Game2048(2, 3, target=64, p4=0.1)
+    after = (2, 0, 0, 3, 0, 0)
+    x = fb.encode(after, 2, 3)
+    n = 30000
+    counts = Counter(fb.decode(fb.spawn(x, 2, 3, g.p4), 2, 3) for _ in range(n))
+    _check_frequencies(counts, dict(g.spawn_distribution(after)), n)
+    g = Game2048(2, 2, target=16, p4=0.3)
+    counts = Counter(fb.decode(fb.initial_board(2, 2, g.p4), 2, 2) for _ in range(n))
+    _check_frequencies(counts, dict(g.initial_distribution()), n)
+
+
+def test_fast_env_step():
+    import fast2048 as fb
+    fb.seed(2)
+    rows, cols, K = 2, 3, 5  # target 32
+    for mode in (0, 1):
+        for _ in range(200):
+            x = fb.initial_board(rows, cols, 0.1)
+            total, points = 0.0, 0
+            while True:
+                mask = fb.legal_mask(x, rows, cols)
+                legal = [a for a in range(4) if mask & (1 << a)]
+                if not legal:
+                    break
+                a = random.choice(legal)
+                after_ref, pts_ref, _ = fb.move(x, a, rows, cols)
+                nxt, reward, terminal, after, created = fb.env_step(
+                    x, a, rows, cols, K, 0.1, mode)
+                assert after == after_ref
+                assert created == fb.is_win(after, rows, cols, K)
+                total += reward
+                points += pts_ref
+                if mode == 0:
+                    assert reward == (1.0 if created else 0.0)
+                    if created:
+                        assert terminal and nxt == after
+                        break
+                else:
+                    assert reward == pts_ref
+                assert fb.tile_sum(nxt, rows, cols) - fb.tile_sum(after, rows, cols) in (2, 4)
+                assert terminal == fb.is_terminal(nxt, rows, cols)
+                x = nxt
+                if terminal:
+                    break
+            if mode == 1:
+                assert total == points
+
+
+def test_fast_random_play_matches_exact_values():
+    """Random play on 2x3: win rate and mean score vs the exact values."""
+    import fast2048 as fb
+    fb.seed(3)
+    n = 20000
+    g = Game2048(2, 3, target=32)
+    p_exact = dp.start_value(g, dp.evaluate_policy(g, dp.random_policy))
+    _, _, _, won = fb.play_random(2, 3, g.target_exp, g.p4, n, True)
+    p = won.mean()
+    assert abs(p - p_exact) < 4 * (p_exact * (1 - p_exact) / n) ** 0.5, (p, p_exact)
+    g = Game2048(2, 3, target=64)
+    s_exact = dp.start_value(g, dp.evaluate_policy(g, dp.random_policy, 'score'))
+    scores, _, _, _ = fb.play_random(2, 3, g.target_exp, g.p4, n, False)
+    assert abs(scores.mean() - s_exact) < 4 * scores.std(ddof=1) / n ** 0.5
+
+
+# ----------------------------------------------------------------------
+# rl2048: tabular agents learn the 2x2 game from the simulator
+# ----------------------------------------------------------------------
+def test_tabular_rl_converges_on_2x2():
+    import rl2048 as rl
+    g = Game2048(2, 2, target=16)
+    ev = rl.ExactEvaluator(g)
+    optimum = dp.start_value(g, ev.V_win)
+    for method in rl.METHODS:
+        env = Env2048(g, reward='win', seed=0)
+        agent, hist = rl.train(method, env, 20000, alpha=0.05, epsilon=0.1,
+                               q_init=0.5, seed=1, eval_every=20000,
+                               evaluator=ev)
+        p = hist[-1]['p_win']
+        assert p > optimum - 0.05, (method, p, optimum)
+        assert hist[-1]['unseen'] < 0.01, (method, hist[-1]['unseen'])
+    # the score objective: the exact score of the learned policy is close
+    # to the maximum expected score
+    V_s, _, _ = dp.solve_optimal(g, 'score')
+    best = dp.start_value(g, V_s)
+    env = Env2048(g, reward='score', seed=0)
+    agent, hist = rl.train('td_afterstate', env, 20000, alpha=0.05,
+                           epsilon=0.1, seed=2, eval_every=20000, evaluator=ev)
+    assert hist[-1]['score'] > 0.95 * best, (hist[-1]['score'], best)
+
+
 if __name__ == '__main__':
     tests = [f for name, f in sorted(globals().items())
              if name.startswith('test_')]

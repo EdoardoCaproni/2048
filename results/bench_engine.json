@@ -1,0 +1,7 @@
+{
+  "numba_compile_s": 1.3534276999998838,
+  "python_2x3_moves_per_s": 131598.02016122383,
+  "fast_2x3_moves_per_s": 3698833.374181195,
+  "python_4x4_moves_per_s": 44626.66375397722,
+  "fast_4x4_moves_per_s": 2496255.5596737
+}
