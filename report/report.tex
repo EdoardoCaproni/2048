@@ -342,7 +342,60 @@ Two tuple sets are used: \textbf{rows, columns and $2\times2$ squares} ($n=4$; o
 
 \subsubsection{The original $4\times4$ game}
 
-\todo{Training grid: tuple sets x alpha x 2 seeds, 300k games each, score reward. Figures fig\_4x4\_score, fig\_4x4\_winrate, fig\_4x4\_maxtile, table\_4x4\_final.csv. Compare with corner/greedy/random evaluated with the same engine, and with the published results: \cite{szubert2014} report winning rate (2048 reached) over 97\% after 500k games with the 17 4-tuples; \cite{yeh2017} reach 32768 in 31.75\% of the games; \cite{guei2022} report 72\% for 32768 with optimistic TD learning.}
+The two networks are trained with the score reward on the original game ($4\times4$, $p_4=0.1$) for 300\,000 games, with $\alpha\in\{0.05,0.1,0.25,0.5\}$ for the 4-tuples and $\alpha\in\{0.1,0.25,0.5\}$ for the 6-tuples, two seeds each (14 runs, about one hour each on one core with the bitboard engine of the appendix). Every checkpoint is evaluated with learning switched off on 1\,000 games with a fixed seed; the three heuristics are evaluated on 10\,000 games with the same engine. Here ``2048 reached'' means that the tile appeared during the game, which continues until no move is left.
+
+\begin{figure}[ht]
+\centering
+\begin{subfigure}[b]{0.48\textwidth}
+\fig{fig_4x4_winrate}
+\caption{Share of evaluation games reaching 2048 (solid) and 4096 (dashed).}
+\end{subfigure}\hfill
+\begin{subfigure}[b]{0.48\textwidth}
+\fig{fig_4x4_train}
+\caption{Mean score of each block of 1\,000 training games.}
+\end{subfigure}\\[4pt]
+\begin{subfigure}[b]{0.48\textwidth}
+\fig{fig_4x4_score}
+\caption{Mean evaluation score (log scales).}
+\end{subfigure}\hfill
+\begin{subfigure}[b]{0.48\textwidth}
+\fig{fig_4x4_maxtile}
+\caption{Largest tile at the end of the game, best agent and heuristics.}
+\end{subfigure}
+\caption{TD(0) $n$-tuple agents on the $4\times4$ board. rcs = rows, columns and squares (4-tuples), rect = $2\times3$ rectangles (6-tuples); bands = min--max over 2 seeds.}
+\label{fig:4x4}
+\end{figure}
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{llrrrrrr}
+\toprule
+Features & $\alpha$ & Score & Moves & $P(2048)$ & $P(4096)$ & $P(8192)$ & Weights\\
+\midrule
+rect (6-tuples) & 0.1  & 65\,958 & 3\,016 & 0.895 & 0.670 & 0.147 & 33.5 M\\
+rect (6-tuples) & 0.25 & 60\,111 & 2\,758 & 0.863 & 0.620 & 0.125 & 33.5 M\\
+rect (6-tuples) & 0.5  & 50\,051 & 2\,359 & 0.878 & 0.575 & 0.011 & 33.5 M\\
+rcs (4-tuples)  & 0.05 & 44\,060 & 2\,115 & 0.788 & 0.462 & 0.004 & 0.33 M\\
+rcs (4-tuples)  & 0.1  & 42\,220 & 2\,034 & 0.822 & 0.436 & 0.002 & 0.33 M\\
+rcs (4-tuples)  & 0.25 & 30\,662 & 1\,550 & 0.764 & 0.144 & 0.000 & 0.33 M\\
+rcs (4-tuples)  & 0.5  & 18\,938 & 1\,026 & 0.456 & 0.000 & 0.000 & 0.33 M\\
+\midrule
+greedy heuristic & -- & 3\,027 & 256 & 0.000 & 0.000 & 0.000 & --\\
+corner rule      & -- & 2\,564 & 227 & 0.000 & 0.000 & 0.000 & --\\
+random           & -- & 1\,084 & 118 & 0.000 & 0.000 & 0.000 & --\\
+\bottomrule
+\end{tabular}
+\caption{$4\times4$ board after 300\,000 training games: mean over 2 seeds of the evaluation on 1\,000 games each (95\% half-width of the score about 2\,000 for the best agents, of the probabilities at most 0.03). The greedy heuristic reaches 512 in 12\% of the games and 1024 in 0.1\%; the corner rule 512 in 5\%.}
+\label{tab:4x4}
+\end{table}
+
+\paragraph{Results.} Table~\ref{tab:4x4} and Figure~\ref{fig:4x4} show that the semi-gradient TD(0) agent learns to play the real game from scratch, with no knowledge of the spawn distribution and no exploration other than the random tiles. The best configuration (6-tuples, $\alpha=0.1$) reaches a mean score of 66\,000, creates the 2048 tile in 90\% of the games, 4096 in 67\% and 8192 in 15\%, in games of 3\,000 moves on average; the hand-made heuristics never pass 1024 and score twenty times less. Three observations:
+\begin{itemize}[leftmargin=*]
+\item \textbf{Features.} The 4-tuple network learns fast (the share of games reaching 2048 passes 50\% within 10\,000 games) but saturates around 45\,000 points and 80\% of 2048: rows, columns and squares cannot represent the long-range structure (a monotone ``snake'' of large tiles) that the end-game needs. The 6-tuples start slowly, because their 33 million weights must each be visited, overtake the 4-tuples after 30\,000 games, and are still improving at 300\,000 (Figure~\ref{fig:4x4}b): a longer run of this configuration is reported below. This is the same approximation-error effect measured exactly on the small boards, with the roles reversed: here the larger table is needed and affordable.
+\item \textbf{Step size.} The learning rate trades speed against the final level: $\alpha=0.5$ learns fastest in the first thousand games and ends worst (the 4-tuple agent with $\alpha=0.5$ stalls at 19\,000 points, with the TD errors of the long late games undoing what the early games learned); $\alpha=0.05$--$0.1$ ends best. The effective per-weight step of \cite{szubert2014}, $0.0025$ with 17 active features, corresponds to $\alpha\approx0.04$ in our normalisation, consistent with this.
+\item \textbf{Comparison with the literature.} \cite{szubert2014} report 97\% of games reaching 2048 after 500\,000 games with the 17 4-tuples and no symmetric sampling, and the stronger networks of \cite{yeh2017,jaskowski2018} reach 32768 regularly; our 300\,000-game runs with the same algorithm are in the expected range, and the gap to the state of the art is a matter of tuple sets, training time and learning-rate schedules (temporal coherence learning), not of method.
+\end{itemize}
+\todo{Add the 1M-game runs of rect alpha 0.1 (seeds 2, 3): results/4x4/rect\_a0.1\_s2, s3.}
 
 \section{The game itself: what is known}
 \label{sec:literature}

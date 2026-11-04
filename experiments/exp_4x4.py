@@ -21,7 +21,7 @@ from common import out_dir, run_grid, save_json
 import ntuple2048 as nt
 
 N_GAMES = 300_000
-CHECKPOINTS = (1_000, 3_000, 10_000, 30_000, 100_000, 200_000, 300_000)
+CHECKPOINTS = (1_000, 3_000, 10_000, 30_000, 100_000, 200_000, 300_000, 500_000, 700_000, 1_000_000)
 GRID = {  # tuple set -> (alphas, seeds)
     'rcs': ((0.05, 0.1, 0.25, 0.5), (0, 1)),
     'rect': ((0.1, 0.25, 0.5), (0, 1)),
@@ -63,8 +63,12 @@ def train_one(c):
 def main():
     n_games = int(sys.argv[1]) if len(sys.argv) > 1 else N_GAMES
     sets = sys.argv[2:] or list(GRID)
-    configs = [dict(tuples=t, alpha=a, seed=s, n_games=n_games)
-               for t in sets for a in GRID[t][0] for s in GRID[t][1]]
+    if len(sys.argv) > 4:  # one configuration: exp_4x4.py GAMES TUPLES ALPHA SEED[,SEED...]
+        configs = [dict(tuples=sys.argv[2], alpha=float(sys.argv[3]), seed=int(s), n_games=n_games)
+                   for s in sys.argv[4].split(',')]
+    else:
+        configs = [dict(tuples=t, alpha=a, seed=s, n_games=n_games)
+                   for t in sets for a in GRID[t][0] for s in GRID[t][1]]
     run_grid(train_one, configs)
 
 
