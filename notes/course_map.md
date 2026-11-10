@@ -1,6 +1,8 @@
 # Course map: what the project uses versus what the course taught
 
-Private study notes, not part of the submission. Lecture numbers and
+Private study notes, not part of the submission. See `study_index.md`
+for the full topic list with depth and progress; the professor's slides
+are in `Materiali DPRL/slides/` (git-ignored). Lecture numbers and
 dates are from the course page (`lectures.html`, A.Y. 2024/25); chapters
 are RLOC = Bertsekas, *Reinforcement Learning and Optimal Control* (DP
 half, cost-minimisation notation) and RLI = Sutton & Barto,
