@@ -10,10 +10,15 @@ Outputs in results/dqn/<board>_s<seed>/:
     final.json      final evaluation (4x4: 1000 games with a fixed seed)
 Run from the project root:  python experiments/exp_dqn.py [2x3|4x4] [quick]
 Options: scale=<s> divides the rewards by s instead of the target tile
-(outputs in results/dqn/<board>_r<s>_s<seed>/), episodes=<n>, seeds=0,1,...
+(outputs in results/dqn/<board>_r<s>_s<seed>/), episodes=<n>, seeds=0,1,...,
+eval_every=<n>, device=cuda (the GPU; default cpu). A run longer than the
+default goes to results/dqn/<board>_e<n>_s<seed>/ and saves train.csv and
+model.pt at every evaluation, so a stopped run keeps its progress.
 e.g. the reward-scale check of the report:
     python experiments/exp_dqn.py 4x4 scale=64 episodes=2000 seeds=0
     python experiments/exp_dqn.py 4x4 scale=256 episodes=2000 seeds=0
+and the longer training on the GPU:
+    python experiments/exp_dqn.py 4x4 episodes=50000 eval_every=2500 device=cuda
 """
 import json
 import sys
@@ -42,11 +47,20 @@ def run(cfg):
         evaluator = dq.exact_evaluator(rl.ExactEvaluator.cached(game, CACHE))
     else:
         evaluator = dq.mc_evaluator(n_games=200)
-    agent = dq.DQNAgent(game, seed=cfg['seed'], reward_scale=cfg.get('scale'))
+    agent = dq.DQNAgent(game, seed=cfg['seed'], reward_scale=cfg.get('scale'),
+                        device=cfg.get('device', 'cpu'))
+    d = out_dir('dqn', run_name(cfg))
+
+    def checkpoint(agent, hist):  # keep the progress of a long run
+        with open(d / 'train.csv', 'w', newline='') as f:
+            w = __import__('csv').DictWriter(f, fieldnames=list(hist[0]))
+            w.writeheader()
+            w.writerows(hist)
+        agent.save(d / 'model.pt')
+
     t0 = time.perf_counter()
     hist = dq.train(agent, cfg['episodes'], eval_every=cfg['eval_every'],
-                    evaluator=evaluator, verbose=True)
-    d = out_dir('dqn', run_name(cfg))
+                    evaluator=evaluator, verbose=True, callback=checkpoint)
     save_csv(hist, d / 'train.csv')
     agent.save(d / 'model.pt')
     final = dict(cfg, **hist[-1], wall_s=time.perf_counter() - t0)
@@ -67,9 +81,12 @@ def run(cfg):
 
 
 def run_name(cfg):
-    if cfg.get('scale') is None:
-        return f"{cfg['board']}_s{cfg['seed']}"
-    return f"{cfg['board']}_r{cfg['scale']:g}_s{cfg['seed']}"
+    name = cfg['board']
+    if cfg.get('tag'):
+        name += f"_{cfg['tag']}"
+    if cfg.get('scale') is not None:
+        name += f"_r{cfg['scale']:g}"
+    return f"{name}_s{cfg['seed']}"
 
 
 def main():
@@ -83,20 +100,27 @@ def main():
         import rl2048 as rl
         from game2048 import Game2048
         rl.ExactEvaluator.cached(Game2048(2, 3, target=64), CACHE)
+    device = opts.get('device', 'cpu')
     configs = []
     for board in boards:
         b = BOARDS[board]
         episodes = int(opts.get('episodes', b['episodes']))
+        # longer runs and quick tests get their own folder
+        tag = 'quick' if quick else f'e{episodes}' if episodes > b['episodes'] else None
         for seed in seeds[:1] if quick else seeds:
-            configs.append({'board': board, 'seed': seed, 'scale': scale,
+            configs.append({'board': board, 'seed': seed, 'scale': scale, 'tag': tag,
+                            'device': device,
                             'episodes': 200 if quick else episodes,
-                            'eval_every': 100 if quick else b['eval_every'],
+                            'eval_every': 100 if quick else int(opts.get('eval_every', b['eval_every'])),
                             'final_games': 20 if quick else FINAL_GAMES_4X4})
     finals = run_grid(run, configs, processes=len(configs))
     for f in finals:
         f.pop('final_tiles', None)
     out = out_dir('dqn')
-    name = 'summary_quick' if quick else 'summary' if scale is None else f'summary_r{scale:g}'
+    tags = sorted({c['tag'] for c in configs if c['tag']})
+    name = ('summary_quick' if quick else
+            f"summary_{'_'.join(tags)}" if tags else
+            'summary' if scale is None else f'summary_r{scale:g}')
     save_csv(finals, out / f'{name}.csv', columns=sorted({k for f in finals for k in f}))
 
 

@@ -106,11 +106,10 @@ class ReplayMemory:
         self.pos = (i + 1) % self.capacity
         self.size = min(self.size + 1, self.capacity)
 
-    def sample(self, batch_size, rng):
+    def sample(self, batch_size, rng, device='cpu'):
         idx = np.array(rng.sample(range(self.size), batch_size))
-        return (torch.from_numpy(self.s[idx]), torch.from_numpy(self.a[idx]),
-                torch.from_numpy(self.r[idx]), torch.from_numpy(self.s2[idx]),
-                torch.from_numpy(self.m2[idx]), torch.from_numpy(self.done[idx]))
+        return tuple(torch.from_numpy(x[idx]).to(device)
+                     for x in (self.s, self.a, self.r, self.s2, self.m2, self.done))
 
     def __len__(self):
         return self.size
@@ -120,15 +119,16 @@ class DQNAgent:
     """DQN agent for a Game2048 (any board size), trained with the score
     reward."""
 
-    def __init__(self, game, seed=0, reward_scale=None):
+    def __init__(self, game, seed=0, reward_scale=None, device='cpu'):
         self.game = game
         self.reward_scale = float(reward_scale or game.target)
+        self.device = torch.device(device)
         n_obs = game.rows * game.cols * N_VALUES
         torch.manual_seed(seed)
         self.rng = random.Random(seed)            # exploration and sampling
         self.env_rng = random.Random(seed + 1)    # random tiles
-        self.policy_net = DQN(n_obs, len(ACTIONS))
-        self.target_net = DQN(n_obs, len(ACTIONS))
+        self.policy_net = DQN(n_obs, len(ACTIONS)).to(self.device)
+        self.target_net = DQN(n_obs, len(ACTIONS)).to(self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.optimizer = optim.AdamW(self.policy_net.parameters(), lr=LR,
                                      amsgrad=True)
@@ -148,7 +148,7 @@ class DQNAgent:
         self.steps_done += 1
         if self.rng.random() > eps:
             with torch.no_grad():
-                q = self.policy_net(torch.from_numpy(obs)[None])[0].numpy()
+                q = self.policy_net(torch.from_numpy(obs)[None].to(self.device))[0].cpu().numpy()
             q[~mask] = -np.inf
             return int(q.argmax())
         return int(self.rng.choice(np.flatnonzero(mask)))
@@ -159,7 +159,7 @@ class DQNAgent:
         optimize_model of the tutorial, with the masked max)."""
         if len(self.memory) < BATCH_SIZE:
             return None
-        s, a, r, s2, m2, done = self.memory.sample(BATCH_SIZE, self.rng)
+        s, a, r, s2, m2, done = self.memory.sample(BATCH_SIZE, self.rng, self.device)
         state_action_values = self.policy_net(s).gather(1, a[:, None])
         with torch.no_grad():
             q2 = self.target_net(s2)
@@ -220,7 +220,7 @@ class DQNAgent:
             part = boards[i:i + chunk]
             masks = np.array([legal_mask(self.game, b) for b in part])
             with torch.no_grad():
-                q = self.policy_net(torch.from_numpy(encode(part))).numpy()
+                q = self.policy_net(torch.from_numpy(encode(part)).to(self.device)).cpu().numpy()
             q[~masks] = -np.inf
             a = q.argmax(1)
             a[~masks.any(1)] = -1
@@ -243,7 +243,7 @@ class DQNAgent:
                 if not mask.any():
                     break
                 with torch.no_grad():
-                    q = self.policy_net(torch.from_numpy(encode([board])))[0].numpy()
+                    q = self.policy_net(torch.from_numpy(encode([board])).to(self.device))[0].cpu().numpy()
                 q[~mask] = -np.inf
                 after, points = g.afterstate(board, ACTIONS[int(q.argmax())])
                 score += points
@@ -257,15 +257,18 @@ class DQNAgent:
         return {k: np.array(v) for k, v in out.items()}
 
     def save(self, path):
-        torch.save({'state_dict': self.policy_net.state_dict(),
+        torch.save({'state_dict': {k: v.cpu() for k, v in self.policy_net.state_dict().items()},
                     'episodes': self.episodes, 'steps': self.steps_done,
                     'board': (self.game.rows, self.game.cols, self.game.target)},
                    path)
 
 
-def train(agent, n_episodes, eval_every=1000, evaluator=None, verbose=False):
+def train(agent, n_episodes, eval_every=1000, evaluator=None, verbose=False,
+          callback=None):
     """Train for n_episodes games. Every eval_every games a row of training
-    statistics is recorded, merged with evaluator(agent) if given."""
+    statistics is recorded, merged with evaluator(agent) if given;
+    callback(agent, history), if given, is called after every row (e.g. to
+    save a checkpoint during a long run)."""
     history = []
     block = {'score': [], 'max_tile': [], 'moves': [], 'won': [], 'loss': []}
     t0 = time.perf_counter()
@@ -291,6 +294,8 @@ def train(agent, n_episodes, eval_every=1000, evaluator=None, verbose=False):
                 print(f"ep {row['episode']:>7}  steps {row['steps']:>9}  train score "
                       f"{row['train_score']:8.1f}{extra}  ({row['time_s']:.0f} s)",
                       flush=True)
+            if callback is not None:
+                callback(agent, history)
             block = {k: [] for k in block}
     return history
 
