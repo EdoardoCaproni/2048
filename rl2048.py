@@ -10,11 +10,15 @@ Barto, "Reinforcement Learning: An Introduction" (2nd ed.):
   q_learning        Q-learning, off-policy TD control (Sec. 6.5)
   expected_sarsa    Expected Sarsa (Sec. 6.6)
   nstep_sarsa       n-step Sarsa (Sec. 7.2)
-  td_afterstate     TD(0) on afterstates (Sec. 6.8): the value of the
-                    board after the slide/merge and before the random
-                    tile. The agent uses the deterministic part of the
-                    rules (game.afterstate) to look one move ahead, but
-                    still never sees the spawn distribution.
+  afterstate_sarsa  Sarsa (Sec. 6.4) with the action values written as
+                    q(x, u) = r(x, u) + V(M(x, u)): the pairs (x, u) that
+                    lead to the same board after the slide/merge
+                    y = M(x, u) (the "afterstate", before the random tile)
+                    share one table entry V(y). The agent uses the
+                    deterministic part of the rules (game.afterstate) to
+                    find M(x, u) and r(x, u), but never sees the spawn
+                    distribution. See AfterstateSarsa for why the Sarsa
+                    update reduces to an update of V.
 
 Because the tile sum strictly increases, every state is visited at most
 once per episode: first-visit and every-visit Monte Carlo coincide, and
@@ -44,7 +48,7 @@ from game2048 import ACTIONS
 
 ACTION_INDEX = {a: i for i, a in enumerate(ACTIONS)}
 METHODS = ('mc_control', 'sarsa', 'q_learning', 'expected_sarsa',
-           'nstep_sarsa', 'td_afterstate')
+           'nstep_sarsa', 'afterstate_sarsa')
 
 
 # ----------------------------------------------------------------------
@@ -312,18 +316,27 @@ class MCControl(TabularAgent):
         return G, info['won'], len(trajectory)
 
 
-class TDAfterstate(TabularAgent):
-    """TD(0) on afterstates (Sec. 6.8), as in Szubert and Jaskowski (2014).
+class AfterstateSarsa(TabularAgent):
+    """Sarsa (Sec. 6.4) with action values q(x, u) = r(x, u) + V[M(x, u)].
 
-    V[y] is the value of the afterstate y. The move at a board x is chosen
-    (epsilon-greedily) by maximising r(x, u) + V[M(x, u)] over the legal
-    moves, where M is the deterministic slide/merge rule. In the 'win'
-    objective an afterstate containing the target has value 1 and is not
-    stored. After observing the next board x' and choosing the next move
-    (u', y', r') the update is V[y] += alpha (r' + V[y'] - V[y]), with
-    target 0 when x' is game over.
+    M is the deterministic slide/merge rule and r(x, u) the points of the
+    move ('score' reward; in the 'win' objective q(x, u) = 1 if the move
+    creates the target, otherwise V[M(x, u)], and the winning afterstates
+    are not stored). All the pairs (x, u) with the same board after the
+    slide y = M(x, u) share the entry V[y]: the parametrisation is exact,
+    because the true q depends on (x, u) only through r(x, u) and y.
+
+    The Sarsa error with this q is
+        R_{t+1} + q(S_{t+1}, A_{t+1}) - q(S_t, A_t)
+          = r(S_{t+1}, A_{t+1}) + V[Y_{t+1}] - V[Y_t],   Y_t = M(S_t, A_t),
+    because R_{t+1} = r(S_t, A_t) cancels; so the update of q(S_t, A_t) is
+    the update V[Y_t] += alpha (r' + V[Y_{t+1}] - V[Y_t]), where (Y_{t+1},
+    r') come from the next move actually chosen (epsilon-greedily: the
+    method is on-policy), with target 0 when the next board is game over.
+    The idea of learning the values of the positions reached by one's own
+    move is the one of the tic-tac-toe player of Sutton and Barto, Sec. 1.5.
     """
-    name = 'td_afterstate'
+    name = 'afterstate_sarsa'
 
     def __init__(self, env, gamma=1.0, q_init=0.0, **kwargs):
         super().__init__(env, gamma, q_init)
@@ -401,7 +414,7 @@ class TDAfterstate(TabularAgent):
 
 AGENTS = {'mc_control': MCControl, 'sarsa': Sarsa, 'q_learning': QLearning,
           'expected_sarsa': ExpectedSarsa, 'nstep_sarsa': NStepSarsa,
-          'td_afterstate': TDAfterstate}
+          'afterstate_sarsa': AfterstateSarsa}
 
 
 # ----------------------------------------------------------------------

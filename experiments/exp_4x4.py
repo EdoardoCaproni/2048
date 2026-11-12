@@ -1,4 +1,4 @@
-"""TD(0) n-tuple learning on the real 4x4 game (target 2048, score reward).
+"""Semi-gradient Sarsa with n-tuple features on the real 4x4 game (target 2048, score reward).
 
 Every run (tuple set, alpha, seed) trains in its own process and saves
     results/4x4/<run>/train.csv     statistics per block of 1000 games

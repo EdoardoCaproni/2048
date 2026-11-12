@@ -62,7 +62,7 @@ def main():
             ax.set_yscale('log')
         ax.set_xlabel('training games')
         ax.set_ylabel(ylabel)
-        ax.set_title('4x4 board: TD(0) n-tuple agent' +
+        ax.set_title('4x4 board: semi-gradient Sarsa, n-tuple features' +
                      (' (dashed: P(4096))' if key == 'p_2048' else ''))
         ax.legend(fontsize=7)
         savefig(fig, OUT / f'fig_4x4_{fname}.png')

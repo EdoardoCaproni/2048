@@ -1,0 +1,911 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- artifact:start -->
+<title>2048 Policy Viewer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a lab instrument. The board is the specimen on the left with
+   its transport controls right under it, the control panel with the
+   policies and the readouts on the right; on a phone everything stacks.
+   Tiles use a sequential teal-to-ink ramp by exponent; tiles at or above
+   the target turn amber (the goal). Every region that changes during a
+   game has a fixed size, so the page never moves while it plays. */
+:root {
+  --bg: #edf0ec;
+  --panel: #f8f9f6;
+  --ink: #17201c;
+  --muted: #59665f;
+  --line: #d2d9d4;
+  --well: #dfe5e0;
+  --cell: #c9d2cc;
+  --accent: #b45309;
+  --accent-ink: #ffffff;
+  --good: #15803d;
+  --bad: #b42318;
+  --focus: #1d4ed8;
+  --font-ui: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-tile: "IBM Plex Sans Condensed", "Arial Narrow", "IBM Plex Sans", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111614; --panel: #18201c; --ink: #e5ebe7; --muted: #95a39b; --line: #2b3530;
+    --well: #1f2824; --cell: #2a3530; --accent: #f59e0b; --accent-ink: #1b1305;
+    --good: #4ade80; --bad: #f87171; --focus: #93b4ff; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111614; --panel: #18201c; --ink: #e5ebe7; --muted: #95a39b; --line: #2b3530;
+  --well: #1f2824; --cell: #2a3530; --accent: #f59e0b; --accent-ink: #1b1305;
+  --good: #4ade80; --bad: #f87171; --focus: #93b4ff; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { background: var(--bg); color: var(--ink); }
+body { font-family: var(--font-ui); font-size: 15px; line-height: 1.5; overflow-anchor: none; }
+.wrap {
+  max-width: 1120px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+header.top { padding-block: 24px 4px; }
+h1 { font-family: var(--font-tile); font-weight: 700; font-size: 2rem; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.lede { margin: 6px 0 0; color: var(--muted); max-width: 66ch; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 380px); gap: 28px; padding-block: 16px 24px; align-items: start; }
+@media (max-width: 860px) { .layout { grid-template-columns: minmax(0, 1fr); gap: 20px; } }
+
+/* ---- stage ---- */
+.stage { display: grid; gap: 12px; justify-items: center; min-width: 0; }
+.stage > * { width: min(100%, 460px); }
+.status { display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; height: 3.4rem; overflow: hidden; text-align: center; }
+.chip { font-family: var(--font-data); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); background: var(--panel); white-space: nowrap; }
+.chip.won { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.chip.lost { color: #fff; background: var(--bad); border-color: var(--bad); }
+.caption { font-family: var(--font-data); font-size: 0.92rem; }
+.arrow { color: var(--accent); font-weight: 600; }
+
+.board { position: relative; border-radius: 14px; background: var(--well); border: 1px solid var(--line);
+  aspect-ratio: var(--cols, 3) / var(--rows, 2); overflow: hidden; touch-action: manipulation; }
+.board .bg, .board .tile { position: absolute; left: 0; top: 0; border-radius: 9px; }
+.board .bg { background: var(--cell); }
+.tile { will-change: transform; z-index: 1; }
+.tile .face { width: 100%; height: 100%; border-radius: inherit; display: grid; place-items: center;
+  font-family: var(--font-tile); font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.tile.leaving { z-index: 0; }
+.face.new { box-shadow: inset 0 0 0 3px var(--accent); }
+.face.pop { animation: pop 200ms ease-out; }
+.face.appear { animation: appear 200ms ease-out; }
+@keyframes pop { 0% { transform: scale(1); } 45% { transform: scale(1.14); } 100% { transform: scale(1); } }
+@keyframes appear { 0% { transform: scale(0.2); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+.flash { position: absolute; background: var(--accent); border-radius: 3px; opacity: 0; pointer-events: none; z-index: 2; }
+.flash.go { animation: flash 420ms ease-out; }
+@keyframes flash { 0% { opacity: 0.95; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .face.pop, .face.appear, .flash.go { animation: none; } }
+
+.transport { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 6px; }
+.speed { display: flex; gap: 10px; align-items: center; }
+.speed label { font-size: 0.85rem; color: var(--muted); }
+
+.readouts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.readouts div { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 7px 10px; min-width: 0; }
+.readouts dt { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.readouts dd { margin: 2px 0 0; font-family: var(--font-data); font-size: 1.02rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 420px) { .readouts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.gauge-head, .values-head { display: flex; justify-content: space-between; gap: 12px; font-size: 0.85rem; color: var(--muted); }
+.gauge-head b { font-family: var(--font-data); color: var(--ink); font-weight: 500; }
+.gauge-track { height: 10px; border-radius: 5px; background: var(--cell); overflow: hidden; margin-top: 6px; }
+.gauge-fill { height: 100%; width: 0; background: var(--accent); transition: width 160ms ease-out; }
+@media (prefers-reduced-motion: reduce) { .gauge-fill { transition: none; } }
+.small { font-size: 0.8rem; color: var(--muted); margin: 6px 0 0; }
+.values-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 5px; }
+.values-list li { display: grid; grid-template-columns: 4.6em minmax(0, 1fr) 6.4em; gap: 8px; align-items: center;
+  font-family: var(--font-data); font-size: 0.82rem; height: 1.35rem; }
+.values-list .bar { height: 8px; border-radius: 4px; background: var(--cell); overflow: hidden; }
+.values-list .bar span { display: block; height: 100%; background: var(--muted); }
+.values-list li.chosen { color: var(--ink); font-weight: 500; }
+.values-list li.chosen .bar span { background: var(--accent); }
+.values-list li.illegal { opacity: 0.4; }
+.values-list .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.values-list .tag { color: var(--good); }
+
+/* ---- panel ---- */
+.panel { display: grid; gap: 14px; min-width: 0; }
+.block { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 10px; min-width: 0; }
+.block h2 { margin: 0; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+button {
+  font: inherit; font-size: 0.9rem; color: var(--ink); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; padding: 8px 10px; cursor: pointer; min-height: 40px; touch-action: manipulation;
+}
+button:hover { border-color: var(--muted); }
+button:focus-visible, input:focus-visible, label.policy:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+.group-name { font-size: 0.75rem; color: var(--muted); margin: 6px 0 2px; }
+.policies { display: grid; gap: 4px; }
+label.policy { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center;
+  padding: 7px 9px; border-radius: 8px; border: 1px solid transparent; cursor: pointer; }
+label.policy:hover { background: var(--bg); }
+label.policy.on { border-color: var(--accent); background: var(--bg); }
+label.policy input { accent-color: var(--accent); margin: 0; }
+label.policy .stat { font-family: var(--font-data); font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.row label { font-size: 0.88rem; color: var(--ink); }
+input[type="range"] { flex: 1; min-width: 100px; accent-color: var(--accent); }
+input[type="number"] { width: 7.5em; font: inherit; font-family: var(--font-data); padding: 6px 8px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.speed-val { font-family: var(--font-data); font-size: 0.85rem; min-width: 7.5em; text-align: right; white-space: nowrap; }
+.stats { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; margin: 0; font-size: 0.88rem; }
+.stats dt { color: var(--muted); }
+.stats dd { margin: 0; font-family: var(--font-data); text-align: right; font-variant-numeric: tabular-nums; }
+.note { margin: 0; font-size: 0.85rem; color: var(--muted); }
+.kbd { font-family: var(--font-data); font-size: 0.75rem; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+footer.foot { padding-block: 4px 32px; color: var(--muted); font-size: 0.82rem; }
+footer.foot p { max-width: 90ch; margin: 6px 0; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <h1>2048 Policy Viewer</h1>
+    <p class="lede">The best policy found by each method of the project plays by itself. Pick a board and a policy; the 2×3 board shows, at every move, what a perfect player could still win.</p>
+  </div>
+</header>
+
+<main class="wrap layout">
+  <section class="stage" aria-label="Game">
+    <div class="status" aria-live="polite">
+      <span id="phase" class="chip">start</span>
+      <span id="caption" class="caption">new game</span>
+    </div>
+    <div id="board" class="board" role="img" aria-label="Board"></div>
+    <div class="transport">
+      <button id="play" type="button" class="primary">Play</button>
+      <button id="step" type="button">Step</button>
+      <button id="new" type="button">New game</button>
+    </div>
+    <div class="speed">
+      <label for="speed">Speed</label>
+      <input id="speed" type="range" min="0" max="8" step="1" value="2">
+      <span id="speed-val" class="speed-val">2 moves/s</span>
+    </div>
+    <p class="small">At every move the tiles slide towards the edge that lights up, equal tiles merge, then the new tile appears with an orange ring.</p>
+    <dl class="readouts">
+      <div><dt>Score</dt><dd id="r-score">0</dd></div>
+      <div><dt>Moves</dt><dd id="r-moves">0</dd></div>
+      <div><dt>Tile sum σ</dt><dd id="r-sigma">0</dd></div>
+      <div><dt>Largest tile</dt><dd id="r-max">0</dd></div>
+    </dl>
+    <div id="gauge" class="gauge">
+      <div class="gauge-head"><span>Optimal P(win) from here</span><b id="g-val">0.000</b></div>
+      <div class="gauge-track"><div id="g-fill" class="gauge-fill"></div></div>
+      <p class="small">V*(x) from the exact dynamic programming solution; after a slide it is the average over the possible new tiles.</p>
+    </div>
+    <div id="values" class="values">
+      <div class="values-head"><span id="v-title">Value of each move</span><span id="v-unit"></span></div>
+      <ul id="v-list" class="values-list"></ul>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <section class="block" aria-labelledby="h-board">
+      <h2 id="h-board">Board</h2>
+      <div class="seg" role="group" aria-label="Board">
+        <button id="b-2x3" type="button" aria-pressed="true">2×3 · target 64</button>
+        <button id="b-4x4" type="button" aria-pressed="false">4×4 · target 2048</button>
+      </div>
+    </section>
+
+    <section class="block" aria-labelledby="h-policy">
+      <h2 id="h-policy">Policy</h2>
+      <div id="policies" class="policies" role="radiogroup" aria-labelledby="h-policy"></div>
+    </section>
+
+    <section class="block" aria-labelledby="h-options">
+      <h2 id="h-options">Options</h2>
+      <div class="row">
+        <label><input id="after" type="checkbox" checked> Pause on the board after the slide, before the new tile</label>
+      </div>
+      <div class="row">
+        <label><input id="auto" type="checkbox" checked> Start a new game at the end</label>
+      </div>
+      <div class="row">
+        <label for="seed">Game seed</label>
+        <input id="seed" type="number" min="0" step="1" value="1">
+      </div>
+      <p class="note">Keys: <span class="kbd">Space</span> play or pause, <span class="kbd">→</span> one step, <span class="kbd">N</span> new game. Tiles slide up to 8 moves per second; faster speeds jump straight to the result.</p>
+    </section>
+
+    <section class="block" aria-labelledby="m-title">
+      <h2 id="m-title">Policy details</h2>
+      <p id="m-note" class="note"></p>
+      <dl id="m-stats" class="stats"></dl>
+    </section>
+
+    <section class="block" aria-labelledby="h-session">
+      <h2 id="h-session">Games watched with this policy</h2>
+      <dl id="t-stats" class="stats"></dl>
+      <div class="seg">
+        <button id="fast" type="button">Play 100 games fast</button>
+        <button id="reset" type="button">Reset the count</button>
+      </div>
+      <p id="t-progress" class="note">The count includes the games played on the board above.</p>
+    </section>
+  </aside>
+</main>
+
+<footer class="wrap foot">
+  <p>Policies retrained by <code>experiments/export_viewer.py</code> with the configuration and the seed of the best run of each method in the report. On the 2×3 board every policy is a table over the 27 022 decision states, and its P(win) is exact (policy evaluation by dynamic programming); on boards a learned table never visited, the corner rule plays. On the 4×4 board the page computes the n-tuple values and the network itself; the n-tuple agent uses the 4-tuple features (the 6-tuple network of the report weighs 134 MB).</p>
+  <p>Project: 2048 as a Markov decision problem, Dynamic Programming and Reinforcement Learning, University of Siena.</p>
+</footer>
+
+<script src="engine.js"></script>
+<script src="data_2x3.js"></script>
+<script src="data_4x4.js"></script>
+<script>
+(function () {
+  'use strict';
+  const E = window.Engine;
+  const DATA = window.VIEWER_DATA || {};
+  const ARROW = { down: '↓', left: '←', right: '→', up: '↑' };
+  const SPEEDS = [0.5, 1, 2, 4, 8, 16, 32, 64, Infinity];
+  const ANIM_MAX_SPEED = 8;  // tiles slide up to this speed (moves per second)
+  const REDUCE = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // tile colours by exponent: teal to ink; tiles at or above the target use the accent
+  const RAMP = ['#e3f0eb', '#cce6dc', '#a9d6c6', '#80c2ae', '#58aa97', '#3a8f82', '#2b7774',
+                '#265f6c', '#244b62', '#233b56', '#1f2d47', '#1b2139'];
+  const fmt = (x, d = 0) => Number(x).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const $ = (id) => document.getElementById(id);
+  const pct = (x) => (x === undefined || x === null ? '–' : `${fmt(100 * x, 1)}%`);
+
+  // ---------------- boards and policies ----------------
+  const boards = {};
+  if (DATA['2x3']) {
+    const d = DATA['2x3'];
+    const game = E.makeGame(d.rows, d.cols, d.target, d.p4);
+    const n = d.rows * d.cols;
+    const keyIndex = new Map();
+    for (let i = 0; i < d.keys.length / n; i++) keyIndex.set(d.keys.substr(i * n, n), i);
+    const vstar = (board) => {
+      const i = keyIndex.get(game.key(board));
+      return i === undefined ? null : d.vstar[i] / 1e6;
+    };
+    const wstar = (after) => {  // average of V* over the new tiles
+      if (game.isWin(after)) return 1;
+      const empty = [];
+      after.forEach((e, i) => { if (!e) empty.push(i); });
+      let s = 0;
+      for (const i of empty) {
+        for (const [v, p] of [[1, 1 - game.p4], [2, game.p4]]) {
+          const b = after.slice(); b[i] = v;
+          s += p * (vstar(b) || 0);
+        }
+      }
+      return s / empty.length;
+    };
+    boards['2x3'] = {
+      id: '2x3', game, vstar, wstar,
+      policies: d.policies.map((p) => ({
+        id: p.id, group: p.group, label: p.label, note: p.note,
+        stat: `P(win) ${p.p_win.toFixed(3)}`,
+        stats: [['Exact P(win)', p.p_win.toFixed(4)], ['Optimal P(win)', d.policies[0].p_win.toFixed(4)]],
+        fn: E.tablePolicy(game, keyIndex, p.actions),
+      })),
+    };
+  }
+  if (DATA['4x4']) {
+    const d = DATA['4x4'];
+    const game = E.makeGame(d.rows, d.cols, d.target, d.p4);
+    const pol = [];
+    const ruleInfo = { corner: ['Corner rule', 'down > left > right > up'],
+                       greedy: ['Greedy rule', 'largest immediate score'],
+                       random: ['Random play', 'a uniformly random legal move'] };
+    for (const id of ['corner', 'greedy', 'random']) {
+      const r = d.rules[id];
+      pol.push({ id, group: 'Rules of thumb', label: ruleInfo[id][0], note: ruleInfo[id][1],
+                 stat: `${fmt(r.score)} pts`, kind: 'rule',
+                 stats: [['Mean score (10 000 games)', fmt(r.score)], ['Reaches 512', pct(r.p512)], ['Reaches 1024', pct(r.p1024)]],
+                 fn: E.rules[id] });
+    }
+    if (d.ntuple) {
+      const s = d.ntuple.stats;
+      pol.push({ id: 'ntuple', group: 'Function approximation', label: 'Semi-gradient Sarsa, n-tuple features',
+                 note: d.ntuple.note, stat: `${fmt(s.eval_score)} pts`, kind: 'ntuple',
+                 stats: [['Mean score (1 000 games)', fmt(s.eval_score)], ['Reaches 1024', pct(s.eval_p1024)],
+                         ['Reaches 2048', pct(s.eval_p2048)], ['Reaches 4096', pct(s.eval_p4096)]],
+                 fn: E.ntuplePolicy(d.ntuple) });
+    }
+    if (d.dqn) {
+      const s = d.dqn.stats;
+      pol.push({ id: 'dqn', group: 'Deep RL (final test)', label: 'DQN (PyTorch tutorial)', note: d.dqn.note,
+                 stat: `${fmt(s.eval_score)} pts`, kind: 'dqn',
+                 stats: [['Mean score (1 000 games)', fmt(s.eval_score)], ['Reaches 512', pct(s.eval_p512)],
+                         ['Reaches 1024', pct(s.eval_p1024)]], fn: E.dqnPolicy(d.dqn) });
+    }
+    boards['4x4'] = { id: '4x4', game, policies: pol };
+  }
+
+  // ---------------- the board: tiles that slide ----------------
+  function tileStyle(e, targetExp) {
+    if (e >= targetExp) return { bg: 'var(--accent)', fg: 'var(--accent-ink)' };
+    return { bg: RAMP[Math.min(e, RAMP.length) - 1], fg: e <= 4 ? '#17201c' : '#ffffff' };
+  }
+  const R = (function () {
+    const el = $('board');
+    let rows = 0;
+    let cols = 0;
+    let targetExp = 99;
+    let geom = null;
+    let tiles = new Map();  // cell -> {el, face, exp}
+    let pending = [];       // deferred updates, run early by flush()
+    let bgs = [];
+    let flashEl = null;
+
+    function measure() {
+      const W = el.clientWidth;
+      const gap = Math.max(4, Math.round(W * 0.022));
+      const cell = (W - gap * (cols + 1)) / cols;
+      geom = { gap, cell };
+      el.style.height = `${gap * (rows + 1) + cell * rows + 2}px`;  // + the two borders
+    }
+    function xy(i) {
+      const r = Math.floor(i / cols);
+      const c = i % cols;
+      return [geom.gap + c * (geom.cell + geom.gap), geom.gap + r * (geom.cell + geom.gap)];
+    }
+    function place(node, i) {
+      const [x, y] = xy(i);
+      node.style.transform = `translate(${x}px, ${y}px)`;
+    }
+    function size(node) {
+      node.style.width = `${geom.cell}px`;
+      node.style.height = `${geom.cell}px`;
+    }
+    function paint(t) {
+      const st = tileStyle(t.exp, targetExp);
+      const v = 2 ** t.exp;
+      const digits = String(v).length;
+      t.face.style.background = st.bg;
+      t.face.style.color = st.fg;
+      t.face.style.fontSize = `${geom.cell * (digits <= 2 ? 0.44 : digits === 3 ? 0.36 : digits === 4 ? 0.29 : 0.23)}px`;
+      t.face.textContent = v;
+    }
+    function create(exp, i, cls) {
+      const node = document.createElement('div');
+      node.className = 'tile';
+      const face = document.createElement('div');
+      face.className = cls ? `face ${cls}` : 'face';
+      node.appendChild(face);
+      size(node);
+      place(node, i);
+      const t = { el: node, face, exp };
+      paint(t);
+      el.appendChild(node);
+      return t;
+    }
+    function flush() {
+      const p = pending;
+      pending = [];
+      p.forEach((job) => { clearTimeout(job.id); job.fn(); });
+    }
+    function later(ms, fn) {
+      if (ms <= 0) { fn(); return; }
+      const job = { fn };
+      job.id = setTimeout(() => {
+        const k = pending.indexOf(job);
+        if (k >= 0) { pending.splice(k, 1); fn(); }
+      }, ms);
+      pending.push(job);
+    }
+    function layout(r, c, tExp) {
+      flush();
+      rows = r; cols = c; targetExp = tExp;
+      el.style.setProperty('--rows', r);
+      el.style.setProperty('--cols', c);
+      el.innerHTML = '';
+      tiles = new Map();
+      measure();
+      bgs = [];
+      for (let i = 0; i < r * c; i++) {
+        const b = document.createElement('div');
+        b.className = 'bg';
+        size(b); place(b, i);
+        el.appendChild(b);
+        bgs.push(b);
+      }
+      flashEl = document.createElement('div');
+      flashEl.className = 'flash';
+      el.appendChild(flashEl);
+    }
+    function relayout() {
+      if (!rows) return;
+      measure();
+      bgs.forEach((b, i) => { size(b); place(b, i); });
+      for (const [i, t] of tiles) {
+        t.el.style.transition = 'none';
+        size(t.el); place(t.el, i); paint(t);
+      }
+    }
+    function snap(board, newCell) {
+      flush();
+      for (const t of tiles.values()) t.el.remove();
+      tiles = new Map();
+      board.forEach((e, i) => { if (e) tiles.set(i, create(e, i, i === newCell ? 'new' : '')); });
+    }
+    function appear(board) {  // a new game: the two tiles pop in
+      snap(new Array(board.length).fill(0));
+      board.forEach((e, i) => { if (e) tiles.set(i, create(e, i, REDUCE ? '' : 'appear')); });
+    }
+    function flash(action, ms) {
+      if (REDUCE || ms <= 0) return;
+      const t = 5;
+      const s = flashEl.style;
+      s.left = action === 'right' ? `calc(100% - ${t}px)` : '0px';
+      s.top = action === 'down' ? `calc(100% - ${t}px)` : '0px';
+      s.width = action === 'left' || action === 'right' ? `${t}px` : '100%';
+      s.height = action === 'up' || action === 'down' ? `${t}px` : '100%';
+      flashEl.classList.remove('go');
+      void flashEl.offsetWidth;
+      flashEl.classList.add('go');
+    }
+    /* Slide every tile along its path; merging pairs become one tile when they meet. */
+    function slide(move, ms) {
+      flush();
+      for (const t of tiles.values()) t.face.classList.remove('new', 'appear', 'pop');
+      const groups = new Map();
+      for (const p of move.paths) {
+        const t = tiles.get(p.from);
+        if (!t) continue;
+        if (!groups.has(p.to)) groups.set(p.to, []);
+        groups.get(p.to).push(t);
+      }
+      const next = new Map();
+      for (const [to, ts] of groups) {
+        for (const t of ts) {
+          t.el.style.transition = ms > 0 ? `transform ${ms}ms ease-in-out` : 'none';
+          place(t.el, to);
+        }
+        next.set(to, ts[0]);
+        if (ts.length === 2) {
+          ts[1].el.classList.add('leaving');
+          later(ms, () => {
+            ts.forEach((t) => t.el.remove());
+            tiles.set(to, create(ts[0].exp + 1, to, ms > 0 ? 'pop' : ''));
+          });
+        }
+      }
+      tiles = next;
+      flash(move.action, ms);
+    }
+    function spawn(i, exp, delay, animate) {
+      later(delay, () => { tiles.set(i, create(exp, i, animate ? 'new appear' : 'new')); });
+    }
+    if (window.ResizeObserver) {
+      let raf = 0;
+      new ResizeObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(relayout); }).observe(el);
+    }
+    return { layout, snap, appear, slide, spawn, flush };
+  })();
+
+  // ---------------- state ----------------
+  const S = {
+    board: boards['2x3'] ? '2x3' : '4x4', policy: {}, playing: false, timer: null,
+    speedIdx: 2, showAfter: true, auto: true, seed: 1, busy: false, tally: {},
+  };
+  let G = null;  // the current game
+
+  const cur = () => boards[S.board];
+  const curPolicy = () => cur().policies.find((p) => p.id === S.policy[S.board]) || cur().policies[0];
+  const ended = () => G.phase === 'won' || G.phase === 'lost';
+  const period = () => (SPEEDS[S.speedIdx] === Infinity ? 0 : 1000 / SPEEDS[S.speedIdx]);
+  const animated = () => !REDUCE && SPEEDS[S.speedIdx] <= ANIM_MAX_SPEED;
+  const slideMs = () => (animated() ? Math.round(Math.min(170, Math.max(80, period() * 0.4))) : 0);
+
+  function newGame(seed) {
+    const b = cur();
+    S.seed = seed;
+    $('seed').value = seed;
+    const rng = E.rngFrom(seed);
+    const polRng = E.rngFrom((seed ^ 0x9e3779b9) >>> 0);
+    G = { rng, polRng, board: b.game.initial(rng), score: 0, moves: 0, phase: 'start',
+          last: null, newCell: null, after: null, counted: false, choice: null, values: null };
+    decide();
+    R.appear(G.board);
+    renderInfo();
+  }
+
+  /* The policy's choice at the current board, with the value of every move. */
+  function decide() {
+    const b = cur();
+    G.legal = b.game.moves(G.board);
+    G.choice = G.legal.length ? curPolicy().fn(G.board, G.legal, G.polRng) : null;
+    G.values = G.legal.length ? moveValues() : G.values;
+  }
+
+  function moveValues() {
+    const b = cur();
+    const pol = curPolicy();
+    let title;
+    let unit;
+    let val;
+    if (b.id === '2x3') {
+      title = 'Exact P(win) after each move'; unit = 'Q*(x, u)'; val = (m) => b.wstar(m.after);
+    } else if (pol.kind === 'ntuple') {
+      title = 'Agent’s value of each move'; unit = 'r + V(afterstate)';
+      val = (m) => m.points + pol.fn.V(m.after);
+    } else if (pol.kind === 'dqn') {
+      title = 'Network’s value of each move'; unit = 'Q × 2048';
+      const q = pol.fn.q(G.board);
+      val = (m) => 2048 * q[E.ACTIONS.indexOf(m.action)];
+    } else {
+      title = 'Points of each move'; unit = 'r(x, u)'; val = (m) => m.points;
+    }
+    const byAction = {};
+    for (const m of G.legal) byAction[m.action] = val(m);
+    return { title, unit, byAction, chosen: G.choice ? G.choice.move.action : null, exact: b.id === '2x3' };
+  }
+
+  /* The slide of the chosen move (afterstate). Returns the move, or null if none. */
+  function doSlide() {
+    const b = cur();
+    if (!G.choice) { finish('lost'); return null; }
+    const m = G.choice.move;
+    G.score += m.points;
+    G.moves += 1;
+    G.last = m;
+    G.after = m.after;
+    G.board = m.after;
+    G.newCell = null;
+    G.phase = 'slide';
+    if (b.id === '2x3' && b.game.isWin(m.after)) finish('won');
+    return m;
+  }
+
+  /* The random tile after the slide. Returns its cell. */
+  function doSpawn() {
+    const b = cur();
+    const s = b.game.spawn(G.after, G.rng);
+    G.board = s.board;
+    G.newCell = s.cell;
+    G.phase = 'spawn';
+    decide();
+    if (!G.legal.length) finish(b.game.isWin(G.board) ? 'won' : 'lost');
+    return s.cell;
+  }
+
+  function finish(result) {
+    G.phase = result;
+    G.legal = [];
+    G.choice = null;
+    if (!G.counted) {
+      G.counted = true;
+      addToTally(result, G.score, cur().game.maxExp(G.board));
+    }
+  }
+
+  function tallyKey() { return `${S.board}:${curPolicy().id}`; }
+  function addToTally(result, score, maxExp) {
+    const k = tallyKey();
+    const t = S.tally[k] || (S.tally[k] = { games: 0, wins: 0, score: 0, best: 0 });
+    t.games += 1;
+    if (S.board === '2x3' ? result === 'won' : maxExp >= 11) t.wins += 1;
+    t.score += score;
+    t.best = Math.max(t.best, maxExp);
+  }
+
+  // ---------------- playback ----------------
+  function schedule(fn, ms) { S.timer = setTimeout(fn, Math.max(0, ms)); }
+  function tick() {
+    S.timer = null;
+    if (!S.playing) return;
+    if (ended()) { endOfGame(); return; }
+    const p = period();
+    if (p === 0) {  // as fast as possible: no animation, a batch of moves per frame
+      const t0 = performance.now();
+      while (!ended() && performance.now() - t0 < 14) {
+        if (G.phase === 'slide') doSpawn();
+        else if (doSlide() && !ended()) doSpawn();
+      }
+      R.snap(G.board, G.newCell);
+      renderInfo();
+      schedule(tick, 0);
+      return;
+    }
+    if (!animated()) {  // 16-64 moves/s: jump to the result of each move
+      if (G.phase === 'slide') doSpawn();
+      else if (doSlide() && !ended()) doSpawn();
+      R.snap(G.board, G.newCell);
+      renderInfo();
+      schedule(tick, p);
+      return;
+    }
+    if (G.phase === 'slide') {  // second half of a move shown in two steps: the new tile
+      const cell = doSpawn();
+      R.spawn(cell, G.board[cell], 0, true);
+      renderInfo();
+      schedule(tick, p * 0.5);
+      return;
+    }
+    const ms = slideMs();
+    const m = doSlide();
+    if (m) R.slide(m, ms);
+    if (!m || ended()) { renderInfo(); schedule(tick, Math.max(p, ms)); return; }
+    if (S.showAfter) { renderInfo(); schedule(tick, Math.max(ms + 60, p * 0.5)); return; }
+    const cell = doSpawn();
+    R.spawn(cell, G.board[cell], ms, true);  // the new tile appears when the tiles stop
+    renderInfo();
+    schedule(tick, p);
+  }
+  function endOfGame() {
+    if (S.auto) {
+      schedule(() => {
+        if (!S.playing) return;
+        newGame(S.seed + 1);
+        schedule(tick, Math.max(400, period()));
+      }, 1300);
+    } else {
+      setPlaying(false);
+    }
+  }
+  function setPlaying(on) {
+    if (!G) return;
+    S.playing = on;
+    $('play').textContent = on ? 'Pause' : 'Play';
+    if (S.timer) { clearTimeout(S.timer); S.timer = null; }
+    if (on) {
+      if (ended()) newGame(S.seed + 1);
+      schedule(tick, 80);
+    }
+  }
+  function step() {
+    if (!G || S.busy) return;
+    setPlaying(false);
+    if (ended()) { newGame(S.seed + 1); return; }
+    const ms = REDUCE ? 0 : 150;
+    if (G.phase === 'slide') {
+      const cell = doSpawn();
+      R.spawn(cell, G.board[cell], 0, !REDUCE);
+    } else {
+      const m = doSlide();
+      if (m) {
+        R.slide(m, ms);
+        if (!ended() && !S.showAfter) {
+          const cell = doSpawn();
+          R.spawn(cell, G.board[cell], ms, !REDUCE);
+        }
+      }
+    }
+    renderInfo();
+  }
+
+  // ---------------- fast simulation ----------------
+  function playFast(n) {
+    if (S.busy || !G) return;
+    setPlaying(false);
+    S.busy = true;
+    const b = cur();
+    const pol = curPolicy();
+    const start = S.seed + 1;
+    let done = 0;
+    ['fast', 'reset', 'play', 'step', 'new'].forEach((id) => { $(id).disabled = true; });
+    function chunk() {
+      const t0 = performance.now();
+      while (done < n && performance.now() - t0 < 30) {
+        const rng = E.rngFrom(start + done);
+        const polRng = E.rngFrom(((start + done) ^ 0x9e3779b9) >>> 0);
+        let board = b.game.initial(rng);
+        let score = 0;
+        let result = 'lost';
+        for (;;) {
+          const legal = b.game.moves(board);
+          if (!legal.length) break;
+          const m = pol.fn(board, legal, polRng).move;
+          score += m.points;
+          if (b.id === '2x3' && b.game.isWin(m.after)) { board = m.after; result = 'won'; break; }
+          board = b.game.spawn(m.after, rng).board;
+        }
+        addToTally(result, score, b.game.maxExp(board));
+        done += 1;
+      }
+      $('t-progress').textContent = `Playing games with seeds ${start} to ${start + n - 1}: ${done} of ${n} done.`;
+      renderTally();
+      if (done < n) { setTimeout(chunk, 0); return; }
+      S.busy = false;
+      $('t-progress').textContent = `Played the games with seeds ${start} to ${start + n - 1}.`;
+      ['fast', 'reset', 'play', 'step', 'new'].forEach((id) => { $(id).disabled = false; });
+      newGame(start + n);
+    }
+    chunk();
+  }
+
+  // ---------------- text and readouts ----------------
+  function renderStatus() {
+    const ph = $('phase');
+    const cap = $('caption');
+    const names = { start: 'start', slide: 'after the slide', spawn: 'new tile', won: 'won', lost: 'game over' };
+    ph.textContent = names[G.phase];
+    ph.className = `chip ${G.phase === 'won' ? 'won' : G.phase === 'lost' ? 'lost' : ''}`;
+    const m = G.last;
+    const cols = cur().game.cols;
+    if (G.phase === 'start') cap.textContent = `game seed ${S.seed}`;
+    else if (G.phase === 'slide') cap.innerHTML = `move ${G.moves}: <span class="arrow">${ARROW[m.action]}</span> ${m.action}, +${m.points}`;
+    else if (G.phase === 'spawn') {
+      const r = Math.floor(G.newCell / cols) + 1;
+      const c = (G.newCell % cols) + 1;
+      cap.innerHTML = `move ${G.moves}: <span class="arrow">${ARROW[m.action]}</span> ${m.action}, new ${2 ** G.board[G.newCell]} at (${r}, ${c})`;
+    } else if (G.phase === 'won') cap.textContent = `${cur().game.target} created in ${G.moves} moves`;
+    else cap.textContent = `no legal move after ${G.moves} moves`;
+    $('r-score').textContent = fmt(G.score);
+    $('r-moves').textContent = fmt(G.moves);
+    $('r-sigma').textContent = fmt(cur().game.tileSum(G.board));
+    $('r-max').textContent = fmt(2 ** cur().game.maxExp(G.board));
+    $('board').setAttribute('aria-label', `Board: ${G.board.map((e) => (e ? 2 ** e : '·')).join(' ')}`);
+  }
+
+  function renderGauge() {
+    const b = cur();
+    if (b.id !== '2x3') return;
+    let v;
+    if (G.phase === 'won') v = 1;
+    else if (G.phase === 'slide') v = b.wstar(G.after);
+    else v = b.vstar(G.board) || 0;
+    $('g-val').textContent = v.toFixed(3);
+    $('g-fill').style.width = `${(100 * v).toFixed(1)}%`;
+  }
+
+  /* Always four rows (down, left, right, up), so the panel keeps its height. */
+  function renderValues() {
+    const V = G.values;
+    if (!V) return;
+    $('v-title').textContent = V.title;
+    $('v-unit').textContent = V.unit;
+    const legalVals = Object.values(V.byAction);
+    const hi = Math.max(...legalVals);
+    const lo = Math.min(0, ...legalVals);
+    $('v-list').innerHTML = E.ACTIONS.map((a) => {
+      if (!(a in V.byAction)) {
+        return `<li class="illegal"><span>${ARROW[a]} ${a}</span><span class="bar"><span style="width:0"></span></span><span class="num">illegal</span></li>`;
+      }
+      const v = V.byAction[a];
+      const w = hi > lo ? (100 * (v - lo)) / (hi - lo) : 100;
+      const num = V.exact ? v.toFixed(3) : fmt(v, 0);
+      const tag = V.exact && v >= hi - 1e-6 ? ' <span class="tag" title="optimal move">★</span>' : '';
+      return `<li class="${a === V.chosen ? 'chosen' : ''}"><span>${ARROW[a]} ${a}</span>` +
+             `<span class="bar"><span style="width:${w.toFixed(1)}%"></span></span><span class="num">${num}${tag}</span></li>`;
+    }).join('');
+  }
+
+  function renderTally() {
+    const t = S.tally[tallyKey()] || { games: 0, wins: 0, score: 0, best: 0 };
+    const winLabel = S.board === '2x3' ? 'Won (64 created)' : 'Reached 2048';
+    const rows = [['Games', fmt(t.games)],
+                  [winLabel, t.games ? `${fmt(t.wins)} (${fmt((100 * t.wins) / t.games, 1)}%)` : '–'],
+                  ['Mean score', t.games ? fmt(t.score / t.games) : '–'],
+                  ['Largest tile', t.games ? fmt(2 ** t.best) : '–']];
+    $('t-stats').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+  }
+
+  function renderInfo() {
+    renderStatus();
+    renderGauge();
+    renderValues();
+    renderTally();
+  }
+
+  function renderPolicyList() {
+    const b = cur();
+    let html = '';
+    let group = null;
+    for (const p of b.policies) {
+      if (p.group !== group) { group = p.group; html += `<div class="group-name">${group}</div>`; }
+      const on = p.id === curPolicy().id;
+      html += `<label class="policy${on ? ' on' : ''}"><input type="radio" name="policy" value="${p.id}"${on ? ' checked' : ''}>` +
+              `<span>${p.label}</span><span class="stat">${p.stat}</span></label>`;
+    }
+    $('policies').innerHTML = html;
+    const p = curPolicy();
+    $('m-title').textContent = p.label;
+    $('m-note').textContent = `${p.group}. ${p.note}.`;
+    $('m-stats').innerHTML = p.stats.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+  }
+
+  // ---------------- controls ----------------
+  function selectBoard(id) {
+    if (!boards[id] || S.busy) return;
+    const wasPlaying = S.playing;
+    setPlaying(false);
+    S.board = id;
+    $('b-2x3').setAttribute('aria-pressed', String(id === '2x3'));
+    $('b-4x4').setAttribute('aria-pressed', String(id === '4x4'));
+    $('gauge').hidden = id !== '2x3';
+    if (!S.policy[id]) {
+      S.policy[id] = id === '2x3' ? 'optimal'
+        : (boards[id].policies.find((p) => p.id === 'ntuple') || boards[id].policies[0]).id;
+    }
+    renderPolicyList();
+    const g = boards[id].game;
+    R.layout(g.rows, g.cols, g.targetExp);
+    newGame(S.seed);
+    if (wasPlaying) setPlaying(true);
+  }
+  function selectPolicy(id) {
+    if (S.busy) return;
+    S.policy[S.board] = id;
+    renderPolicyList();
+    const wasPlaying = S.playing;
+    setPlaying(false);
+    newGame(S.seed);  // same seed: compare policies on the same tiles
+    if (wasPlaying) setPlaying(true);
+  }
+  function setSpeed(idx) {
+    S.speedIdx = idx;
+    const v = SPEEDS[idx];
+    $('speed').value = idx;
+    $('speed-val').textContent = v === Infinity ? 'as fast as possible' : `${v} move${v === 1 ? '' : 's'}/s`;
+  }
+
+  $('b-2x3').addEventListener('click', () => selectBoard('2x3'));
+  $('b-4x4').addEventListener('click', () => selectBoard('4x4'));
+  $('policies').addEventListener('change', (ev) => { if (ev.target.name === 'policy') selectPolicy(ev.target.value); });
+  $('play').addEventListener('click', () => setPlaying(!S.playing));
+  $('step').addEventListener('click', step);
+  $('new').addEventListener('click', () => {
+    if (!G || S.busy) return;
+    const p = S.playing; setPlaying(false); newGame(S.seed + 1); if (p) setPlaying(true);
+  });
+  $('speed').addEventListener('input', (ev) => setSpeed(Number(ev.target.value)));
+  $('after').addEventListener('change', (ev) => { S.showAfter = ev.target.checked; });
+  $('auto').addEventListener('change', (ev) => { S.auto = ev.target.checked; });
+  $('seed').addEventListener('change', (ev) => {
+    if (!G || S.busy) return;
+    const v = Math.max(0, Math.floor(Number(ev.target.value) || 0));
+    const p = S.playing; setPlaying(false); newGame(v); if (p) setPlaying(true);
+  });
+  $('fast').addEventListener('click', () => playFast(100));
+  $('reset').addEventListener('click', () => {
+    delete S.tally[tallyKey()];
+    renderTally();
+    $('t-progress').textContent = 'The count includes the games played on the board above.';
+  });
+  document.addEventListener('keydown', (ev) => {
+    const t = ev.target || {};
+    if (t.tagName === 'INPUT' && t.type === 'number') return;
+    if (S.busy) return;
+    if (ev.key === ' ') { ev.preventDefault(); setPlaying(!S.playing); }
+    else if (ev.key === 'ArrowRight' && t.type !== 'range') { ev.preventDefault(); step(); }
+    else if (ev.key === 'n' || ev.key === 'N') { $('new').click(); }
+  });
+
+  // keep the viewer's choices across a republish of the page
+  const hot = window.claude && window.claude.hot;
+  if (hot && hot.snapshot) {
+    hot.snapshot(() => ({ board: S.board, policy: S.policy, seed: S.seed, speedIdx: S.speedIdx,
+                          showAfter: S.showAfter, auto: S.auto }));
+  }
+  function start(saved) {
+    saved = saved || {};
+    if (!Object.keys(boards).length) {
+      $('caption').textContent = 'The policy data did not load (data_2x3.js, data_4x4.js).';
+      return;
+    }
+    if (saved.policy) S.policy = saved.policy;
+    if (Number.isFinite(saved.seed)) S.seed = saved.seed;
+    setSpeed(Number.isFinite(saved.speedIdx) ? saved.speedIdx : S.speedIdx);
+    if (typeof saved.showAfter === 'boolean') { S.showAfter = saved.showAfter; $('after').checked = saved.showAfter; }
+    if (typeof saved.auto === 'boolean') { S.auto = saved.auto; $('auto').checked = saved.auto; }
+    if (!boards['4x4']) $('b-4x4').disabled = true;
+    if (!boards['2x3']) $('b-2x3').disabled = true;
+    selectBoard(saved.board && boards[saved.board] ? saved.board : S.board);
+  }
+  if (hot && hot.ready) hot.ready(start); else start(hot && hot.data);
+})();
+</script>
+<!-- artifact:end -->
+</body>
+</html>

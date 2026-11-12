@@ -1,0 +1,1 @@
+{"actions": null, "info": {"tuples": "rcs", "alpha": 0.1, "seed": 0, "games": 300000, "eval_games": 1000, "eval_score": 42850.368, "eval_moves": 2062.445, "eval_p512": 0.991, "eval_p1024": 0.944, "eval_p2048": 0.856, "eval_p4096": 0.432, "eval_p8192": 0.003, "time_s": 309.17567229999986}}

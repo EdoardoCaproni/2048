@@ -107,12 +107,14 @@ Sliding moves tiles without changing their values, and a merge replaces two tile
 \begin{enumerate}[label=(\roman*)]
 \item The tile sum strictly increases along every trajectory, so no state is visited twice: the transition graph of the reachable states is acyclic.
 \item Before the target is created every tile is at most $2^{K-1}$, so $\sigma(x_t)\le RC\cdot 2^{K-1}$. Since $\sigma$ grows by at least 2 per move, every game ends within $RC\cdot 2^{K-2}$ moves, whatever the policy. All the policies are proper, and \eqref{eq:bellman-v}--\eqref{eq:bellman-w} has a unique solution.
-\item Let $\X_\sigma=\{x\in\X:\sigma(x)=\sigma\}$. Transitions only go from $\X_\sigma$ to $\X_{\sigma+2}\cup\X_{\sigma+4}$. Hence $V^*$ is computed exactly by a single backward recursion over $\sigma$, like the finite-horizon DP algorithm with stage index $\sigma/2$: no value iteration or policy iteration is needed.
+\item Let $\X_\sigma=\{x\in\X:\sigma(x)=\sigma\}$. Transitions only go from $\X_\sigma$ to $\X_{\sigma+2}\cup\X_{\sigma+4}$. Hence $V^*$, which value iteration computes in a finite number of iterations, is also computed exactly by a single backward recursion over $\sigma$, like the finite-horizon DP algorithm with stage index $\sigma/2$.
 \end{enumerate}
 \end{corollary}
 
+\paragraph{Total-cost formulation.} In the terms of the course~\cite{bertsekas}, 2048 is an infinite-horizon problem with total cost and two kinds of termination states, the win and the boards without legal moves, made absorbing and cost-free. Corollary~\ref{cor:dag}(ii) gives the assumptions of the total-cost case: termination states exist (A2) and every policy reaches them from every state (A3), here with probability one and within $RC\cdot2^{K-2}$ moves. The Bellman equation \eqref{eq:bellman-v}--\eqref{eq:bellman-w} therefore has a unique solution, and value iteration converges to it from $V^{(0)}=0$ with no discount; updating the states in decreasing tile sum, one sweep is enough, and this is the backward recursion below.
+
 \begin{remark}[afterstates]
-A move factors into a deterministic, controlled part $x\mapsto y=M(x,u)$ and a random, uncontrolled part $y\mapsto x'$. The Bellman equation can therefore be written on afterstates, as in \eqref{eq:bellman-w}. This is the afterstate value function of Sutton and Barto~\cite[\S6.8]{sutton}, which the RL part will learn instead of action values.
+A move factors into a deterministic, controlled part $x\mapsto y=M(x,u)$ and a random, uncontrolled part $y\mapsto x'$. The expectation over the disturbance can therefore be computed in two steps: first the afterstate $y$ of every move, then the average over the new tile in \eqref{eq:bellman-w}. The same decomposition gives the RL part an exact parametrisation of the action values, $q(x,u)=r(x,u)+V(M(x,u))$.
 \end{remark}
 
 \begin{remark}[symmetries]
@@ -180,6 +182,7 @@ $4\times4$ & 2048 & intractable & $\approx 4.6\cdot10^{16}$\\
 \item Win probability or expected score: do the two optimal policies differ, and where?
 \item The curse of dimensionality: growth of $|\X|$ and of the computing time with the board.
 \item Validation: Monte Carlo simulation of the optimal policy against the exact values.
+\item Value iteration on the total-cost formulation: number of iterations to the exact fixed point, compared with the backward recursion.
 \end{enumerate}
 
 \section{From DP to RL}
@@ -188,11 +191,11 @@ The RL part keeps the game and adds the constraints that make exact DP impossibl
 
 \begin{itemize}[leftmargin=*]
 \item \textbf{Unknown model}: the agent only interacts with a simulator (\texttt{reset}/\texttt{step}) and does not know the spawn distribution.
-\item \textbf{Original board}: $4\times4$ with target 2048, where tabular methods are not feasible. The value function is approximated linearly, for instance with n-tuple networks, and learned with TD methods on afterstates, as done by Szubert and Ja\'{s}kowski~\cite{szubert}.
-\item \textbf{Validation}: on the small boards the learned policies are compared with the exact $V^*$ of the DP part.
+\item \textbf{Original board}: $4\times4$ with target 2048, where tabular methods are not feasible. The action values are approximated linearly, $\hat q(x,u;\mathbf w)=r(x,u)+\mathbf w^\top\boldsymbol\phi(M(x,u))$, with the binary $n$-tuple features of Szubert and Ja\'{s}kowski~\cite{szubert}, and learned with episodic semi-gradient Sarsa.
+\item \textbf{Validation}: on the small boards the learned values and policies are compared with the exact $V^*$ and $v_\pi$ of the DP part.
 \end{itemize}
 
-Candidate methods: Monte Carlo control, SARSA, Q-learning, Expected SARSA, $n$-step methods, semi-gradient TD(0) on afterstates and REINFORCE.
+Methods, all from the course~\cite{sutton}: TD(0), $n$-step TD and Monte Carlo prediction (\S6.1--6.3, \S7.1); Monte Carlo control, Sarsa, Q-learning, Expected Sarsa and $n$-step Sarsa (\S5.4, \S6.4--6.6, \S7.2), also with the action values written as $q(x,u)=r(x,u)+V(M(x,u))$; episodic semi-gradient Sarsa with linear function approximation (\S10.1). A deep Q-network (DQN), built as in the PyTorch tutorial, is added as a final test.
 
 \begin{thebibliography}{9}
 \bibitem{bertsekas} D.~P.~Bertsekas, \emph{Reinforcement Learning and Optimal Control}, Athena Scientific, 2019.

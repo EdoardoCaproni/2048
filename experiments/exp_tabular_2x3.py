@@ -27,7 +27,7 @@ OUT = out_dir('tabular')
 # with optimistic initialisation
 SETTINGS = [('score', 0.0), ('win', 0.0), ('win', 1.0)]
 ALPHA = {'mc_control': None, 'sarsa': 0.1, 'q_learning': 0.1,
-         'expected_sarsa': 0.1, 'nstep_sarsa': 0.1, 'td_afterstate': 0.1}
+         'expected_sarsa': 0.1, 'nstep_sarsa': 0.1, 'afterstate_sarsa': 0.1}
 EPSILON = 0.1
 N_STEP = 3
 

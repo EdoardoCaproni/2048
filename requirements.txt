@@ -2,3 +2,4 @@ numpy>=2.0,<2.6
 matplotlib>=3.8
 numba>=0.68
 jupyterlab>=4
+torch>=2.2                      # only for the DQN final test (dqn2048.py)

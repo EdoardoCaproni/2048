@@ -330,13 +330,91 @@ def test_tabular_rl_converges_on_2x2():
     V_s, _, _ = dp.solve_optimal(g, 'score')
     best = dp.start_value(g, V_s)
     env = Env2048(g, reward='score', seed=0)
-    agent, hist = rl.train('td_afterstate', env, 20000, alpha=0.05,
+    agent, hist = rl.train('afterstate_sarsa', env, 20000, alpha=0.05,
                            epsilon=0.1, seed=2, eval_every=20000, evaluator=ev)
     assert hist[-1]['score'] > 0.95 * best, (hist[-1]['score'], best)
 
 
 # ----------------------------------------------------------------------
-# ntuple2048: TD(0) on afterstates learns the 2x3 game
+# dp2048: value iteration reaches the backward recursion exactly
+# ----------------------------------------------------------------------
+def test_value_iteration_matches_backward_recursion():
+    for r, c, target, objective in ((2, 2, 16, 'win'), (2, 2, 32, 'win'),
+                                    (2, 2, 16, 'score')):
+        g = Game2048(r, c, target=target)
+        V, _, layers = dp.solve_optimal(g, objective)
+        V_vi, table, hist = dp.value_iteration(g, objective, layers, V_ref=V)
+        assert all(V_vi[b] == V[b] for b in V), (r, c, target, objective)
+        assert hist[-1]['delta'] == 0.0 and hist[-1]['error'] == 0.0
+        # at most one iteration per stage, plus the confirming one
+        assert len(hist) <= len(layers) + 1, (len(hist), len(layers))
+        # the start value increases with the horizon (P(win within i moves))
+        starts = [h['start'] for h in hist]
+        assert all(a <= b + 1e-12 for a, b in zip(starts, starts[1:]))
+        # Gauss-Seidel in decreasing tile sum: exact after one sweep
+        _, _, hist_gs = dp.value_iteration(g, objective, layers,
+                                           order='backward', V_ref=V)
+        assert len(hist_gs) == 2 and hist_gs[0]['error'] == 0.0
+        # the greedy policy of value iteration is optimal
+        V_pol = dp.evaluate_policy(g, dp.table_policy(table), objective, layers)
+        assert abs(dp.start_value(g, V_pol) - dp.start_value(g, V)) < 1e-12
+
+
+# ----------------------------------------------------------------------
+# predict2048: TD(0), n-step TD and Monte Carlo estimate v_pi
+# ----------------------------------------------------------------------
+def test_prediction_converges_on_2x2():
+    import numpy as np
+    import predict2048 as pr
+    g = Game2048(2, 2, target=16)
+    V, table, layers = dp.solve_optimal(g)
+    prob = pr.Problem(g, table, layers=layers)
+    assert abs(prob.mu.sum() - 1.0) < 1e-12
+    S, R, starts = prob.episodes(20_000, seed=3)
+    # the episodes follow the policy: their win frequency matches V*
+    wins = R[starts[1:] - 1].mean()
+    assert abs(wins - dp.start_value(g, V)) < 0.01, wins
+    # the boards of the episodes are the boards of the DP
+    assert all(prob.codes[i] == __import__('fast2048').encode(prob.boards[i], 2, 2)
+               for i in np.unique(S)[:50])
+    for n, alpha in ((1, 0.1), (3, 0.1), (pr.MC_N, 0.05)):
+        Vh, rms = pr.nstep_td(S, R, starts, n, alpha, 0.5, prob.v_true, prob.mu)
+        assert abs(rms[-1] - pr.rms_error(Vh, prob)) < 1e-9
+        assert rms[-1] < 0.05 and rms[-1] < rms[0] / 5, (n, rms[0], rms[-1])
+
+
+# ----------------------------------------------------------------------
+# dqn2048: the DQN of the final test runs and plays legal moves
+# ----------------------------------------------------------------------
+def test_dqn_smoke():
+    try:
+        import torch
+    except ImportError:
+        print('     (torch not installed: DQN test skipped)')
+        return
+    import numpy as np
+    import dqn2048 as dq
+    import rl2048 as rl
+    torch.set_num_threads(1)
+    g = Game2048(2, 2, target=16)
+    x = dq.encode([(1, 0, 3, 2)])
+    assert x.shape == (1, 4 * dq.N_VALUES) and x.sum() == 4
+    assert x[0, 1] == 1 and x[0, dq.N_VALUES + 0] == 1 and x[0, 3 * dq.N_VALUES + 2] == 1
+    agent = dq.DQNAgent(g, seed=0)
+    hist = dq.train(agent, 300, eval_every=300,
+                    evaluator=dq.exact_evaluator(rl.ExactEvaluator(g)))
+    assert agent.steps_done > dq.BATCH_SIZE and np.isfinite(hist[-1]['loss'])
+    assert 0.0 <= hist[-1]['p_win'] <= 1.0 and hist[-1]['unseen'] == 0.0
+    # greedy actions are legal, and -1 only at game over
+    boards = [(1, 1, 2, 3), (1, 2, 3, 4), (0, 0, 1, 1)]
+    actions, _ = agent.greedy_batch(boards)
+    for b, a in zip(boards, actions):
+        legal = g.legal_actions(b)
+        assert (a == -1) == (not legal) and (a == -1 or ACTIONS[a] in legal)
+
+
+# ----------------------------------------------------------------------
+# ntuple2048: semi-gradient Sarsa with n-tuple features learns the 2x3 game
 # ----------------------------------------------------------------------
 def test_ntuple_small_board():
     import numpy as np

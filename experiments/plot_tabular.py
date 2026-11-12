@@ -25,7 +25,7 @@ from game2048 import Game2048
 OUT = RESULTS / 'tabular'
 LABELS = {'mc_control': 'MC control', 'sarsa': 'Sarsa', 'q_learning': 'Q-learning',
           'expected_sarsa': 'Expected Sarsa', 'nstep_sarsa': '3-step Sarsa',
-          'td_afterstate': 'TD(0) afterstates'}
+          'afterstate_sarsa': 'Sarsa (afterstates)'}
 SETTINGS = {'score_q0': 'score reward', 'win_q0': 'win reward',
             'win_q1': 'win reward, optimistic initialisation'}
 

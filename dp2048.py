@@ -139,6 +139,68 @@ def start_value(game, V):
     return sum(p * V[board] for board, p in game.initial_distribution())
 
 
+# ----------------------------------------------------------------------
+# Value iteration (total-cost formulation of the course slides)
+# ----------------------------------------------------------------------
+def value_iteration(game, objective='win', layers=None, order='jacobi',
+                    tol=0.0, max_iter=100_000, V_ref=None):
+    """Value iteration for the total-reward (total-cost) formulation.
+
+    The win and the game over are absorbing, reward-free termination
+    states, and every policy reaches them within R*C*2**(K-2) moves: these
+    are assumptions A2-A3 of the total-cost problem (slides
+    11-Infinite-DP), so the Bellman equation has a unique solution and
+    value iteration converges from V^(0) = 0. Starting from zero, V^(i)(x)
+    is the optimal value of the game cut after i moves (for 'win': the
+    probability of winning within i moves).
+
+    order='jacobi'    the algorithm of the slides: V^(i+1) is computed from
+                      V^(i) for every state; it stops when
+                      max_x |V^(i+1)(x) - V^(i)(x)| <= tol.
+    order='backward'  Gauss-Seidel: the states are updated in place in
+                      decreasing tile sum, so every update already uses the
+                      final values of the later stages. The first sweep
+                      gives V* and the second only confirms it: this is the
+                      backward recursion of solve_optimal.
+
+    Returns (V, table, history). history has one dict per iteration with
+    'iteration', 'delta' (largest change), 'start' (value at the start of
+    the game) and, if V_ref is given, 'error' = max_x |V^(i)(x) - V_ref(x)|.
+    """
+    if order not in ('jacobi', 'backward'):
+        raise ValueError("order must be 'jacobi' or 'backward'")
+    layers = _default_layers(game, objective, layers)
+    states = [b for sigma in sorted(layers, reverse=True) for b in layers[sigma]]
+    V = dict.fromkeys(states, 0.0)
+    table = {}
+    history = []
+    for it in range(1, max_iter + 1):
+        new = V if order == 'backward' else {}
+        W = {}  # afterstate values from the current V (cached per sweep)
+        delta = 0.0
+        for board in states:
+            best_action, best = None, 0.0  # game over: value 0
+            for action, after, points in game.moves(board):
+                w = W.get(after)
+                if w is None:
+                    w = W[after] = afterstate_value(game, after, V, objective)
+                q = w + points if objective == 'score' else w
+                if best_action is None or (q > best and not _is_tie(q, best)):
+                    best_action, best = action, q
+            delta = max(delta, abs(best - V[board]))
+            new[board] = best
+            if best_action is not None:
+                table[board] = best_action
+        V = new
+        row = {'iteration': it, 'delta': delta, 'start': start_value(game, V)}
+        if V_ref is not None:
+            row['error'] = max(abs(V[b] - V_ref[b]) for b in states)
+        history.append(row)
+        if delta <= tol:
+            break
+    return V, table, history
+
+
 def action_values(game, board, V, objective='win'):
     """Q-values {action: value} of the legal moves of a board."""
     q = {}

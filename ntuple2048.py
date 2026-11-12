@@ -1,36 +1,48 @@
-"""n-tuple network and TD(0) learning on afterstates for 2048.
+"""Episodic semi-gradient Sarsa with a linear approximation (n-tuple
+features) for 2048.
 
-The afterstate value function is approximated linearly:
+Action values (Sutton and Barto, Sec. 10.1)
+-------------------------------------------
+The approximate action value of a move u at a board x is
 
-    V(y; w) = sum_m  w[owner(m), index_m(y)]
+    q(x, u; w) = r(x, u) + w^T phi(M(x, u)),
 
-where each feature m is an n-tuple of cells; index_m(y) packs the
-exponents of those cells into an integer (4 bits per cell) and selects
-one weight of a lookup table. This is the architecture of Szubert and
-Jaskowski (2014). It is a linear function approximation with binary
-features: exactly one feature is active per table, so the semi-gradient
-TD(0) update of Sutton and Barto (Sec. 9.3)
+where y = M(x, u) is the board after the deterministic slide/merge (before
+the random tile), r(x, u) are the points of the move and phi(y) is a binary
+feature vector; V(y; w) = w^T phi(y) is the learned part. The features are
+built from n-tuples of cells (the "n-tuple network" of Szubert and
+Jaskowski, 2014): for every tuple m, index_m(y) packs the exponents found
+in those cells into an integer (4 bits per cell) and phi has a 1 in the
+entry (m, index_m(y)) of table m. So
 
-    w <- w + alpha [r' + V(y'; w) - V(y; w)] grad V(y; w)
+    V(y; w) = sum_m  w[owner(m), index_m(y)],
 
-adds a multiple of the TD error to the active weights. Here alpha is
-the step of the value V(y): with M active features each weight moves by
-alpha / M times the error, so that alpha has the same meaning for every
-tuple set (the per-weight step of Szubert and Jaskowski is alpha / M).
+a linear function of w with M active binary features (one per tuple, like
+M overlapping state aggregations, Sec. 9.3), and grad_w q(x, u; w) = phi(y).
 
-Symmetric sampling: with symmetric=True every base tuple is applied in
-all the images under the symmetries of the board (8 for a square board,
-4 otherwise) and the images share the weights of the base tuple, so the
-value function is invariant under the symmetries, like V*.
+Learning algorithm
+------------------
+The episodic semi-gradient one-step Sarsa update (Sec. 10.1),
 
-Learning algorithm (TD-afterstate, Szubert and Jaskowski 2014)
---------------------------------------------------------------
-At the board x the move u is chosen greedily by r(x, u) + V(M(x, u)) over
-the legal moves (the random tile is the only source of exploration, as in
-the paper; an epsilon-greedy variant is available). After the random tile
-gives x', the move u' at x' is chosen in the same way, with afterstate y'
-and points r', and V(y) is updated towards r' + V(y'). The target is 0
-when x' is game over.
+    w <- w + alpha [R_{t+1} + q(S_{t+1}, A_{t+1}; w) - q(S_t, A_t; w)] grad q(S_t, A_t; w),
+
+becomes, since R_{t+1} = r(S_t, A_t) cancels,
+
+    w <- w + alpha [r(S_{t+1}, A_{t+1}) + V(Y_{t+1}; w) - V(Y_t; w)] phi(Y_t),
+
+with Y_t = M(S_t, A_t), i.e. a multiple of the TD error added to the M
+active weights; the target is 0 when S_{t+1} is game over. Here alpha is
+the step of the value V(y): each active weight moves by alpha / M times
+the error, so that alpha has the same meaning for every tuple set. The move
+is chosen epsilon-greedily with respect to q; with epsilon = 0 (the default,
+as in the Mountain Car example of Sec. 10.1) the random tile is the only
+source of exploration, and Sarsa, Q-learning and Expected Sarsa coincide.
+
+Symmetric weight sharing: with symmetric=True every base tuple is also
+read in all its images under the symmetries of the board (8 for a square
+board, 4 otherwise), and the images share the weights of the base tuple:
+a choice of features that makes V invariant under the symmetries, like V*
+(the idea of Exercise 1.2 of Sutton and Barto).
 
 reward_mode 0 ('win'):   r = 1 when the move creates the target tile,
                          the episode ends there; V(winning y) = 1 fixed.
@@ -60,7 +72,7 @@ def make_tuples(rows, cols, name):
     """Base n-tuples (lists of nibble indices) for a board.
 
     'full'    one tuple with all the cells (a lookup table of the whole
-              afterstate: tabular TD(0), exact on small boards)
+              afterstate: tabular Sarsa on afterstates, exact on small boards)
     'rows'    all the rows
     'rcs'     rows, columns and 2x2 squares (on 4x4 the 17 tuples of
               Szubert and Jaskowski 2014; 'szubert' is an alias)
@@ -212,7 +224,7 @@ def random_move(x, rows, cols, target_exp, reward_mode, W, cells, owner):
 @njit(cache=True)
 def play_td(W, cells, owner, rows, cols, target_exp, p4, reward_mode, alpha,
             learn, eps):
-    """One game of TD-afterstate learning (or of greedy play if learn is
+    """One game of semi-gradient Sarsa learning (or of greedy play if learn is
     False). Returns (score, max exponent of the final board, moves,
     target reached)."""
     x = fb.initial_board(rows, cols, p4)
@@ -375,7 +387,7 @@ class NTupleNet:
     def train(self, n_games, alpha, reward='score', seed=0, block=1000,
               eps=0.0, evaluator=None, eval_at=(), checkpoint=None,
               verbose=False):
-        """TD-afterstate learning for n_games games, in blocks.
+        """Semi-gradient Sarsa learning for n_games games, in blocks.
 
         alpha is the learning rate of the value V(y) (the TD error is
         spread over the M active features, each weight moving by

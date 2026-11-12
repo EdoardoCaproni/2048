@@ -1,0 +1,21 @@
+{
+  "board": "2x3",
+  "seed": 2,
+  "episodes": 20000,
+  "eval_every": 1000,
+  "final_games": 1000,
+  "episode": 20000,
+  "steps": 820914,
+  "epsilon": 0.01,
+  "train_score": 386.988,
+  "train_moves": 44.167,
+  "train_target": 0.762,
+  "train_max_tile": 128,
+  "loss": 0.02290028982814277,
+  "time_s": 1257.6659321999905,
+  "p_win": 0.8112146302159257,
+  "score": 407.6529541737114,
+  "agree": 0.6458624931833514,
+  "unseen": 0.0,
+  "wall_s": 1258.9517310999945
+}

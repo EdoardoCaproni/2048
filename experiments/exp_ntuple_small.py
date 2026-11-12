@@ -1,4 +1,4 @@
-"""n-tuple TD(0) on the small boards, validated against the exact DP.
+"""Semi-gradient Sarsa with n-tuple features on the small boards, validated against the exact DP.
 
 Phase 1 (parallel): every configuration is trained with the numba code
 and the weights are saved at the checkpoints in EVAL_AT.
