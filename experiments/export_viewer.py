@@ -18,6 +18,11 @@ rule, as in the exact evaluation), with its exact P(win) and expected score:
     columns, squares).
 4x4 board, target 2048: the page computes the policies itself:
     corner, greedy and random rules;
+    MC control, Sarsa, Expected Sarsa, Q-learning, 3-step Sarsa, Sarsa on
+    afterstates (experiments/exp_tabular_4x4.py, best of 5 seeds): the
+    50 000 boards (afterstates) met most often in training, in
+    viewer/data_4x4_tabular.js, loaded when one of them is chosen; the
+    corner rule plays elsewhere;
     DQN with the tutorial's schedule, on the GPU with the perceptron, and on
     the GPU with the convolutional network: the seed with the largest final
     mean score; the weights are exported (the convolutional network, 2
@@ -277,6 +282,56 @@ def export_network(run):
                         'out': int(sd[f'layer{i}.weight'].shape[0])} for i in (1, 2, 3)]}
 
 
+TABLE_ENTRIES = 50_000  # boards (afterstates) of each 4x4 table in the viewer
+
+
+def export_4x4_tabular():
+    """The six tabular methods on 4x4 (experiments/exp_tabular_4x4.py), best
+    seed of each: their tables hold tens of millions of boards, so the page
+    gets the TABLE_ENTRIES boards (afterstates) met most often in training,
+    and plays the corner rule elsewhere; its statistics are those of this
+    restricted table, on the same 1 000 games as the full one. Returns the
+    metadata for data_4x4.js and the tables for data_4x4_tabular.js."""
+    import fast2048 as fb
+    import rlfast2048 as rf
+    meta, tables = {}, {}
+    for method in rf.METHODS:
+        runs = sorted((RESULTS / 'tabular_4x4').glob(f'{method}_s*'))
+        runs = [d for d in runs if (d / 'final.json').exists() and (d / 'top.npz').exists()]
+        if not runs:
+            continue
+        run = max(runs, key=lambda d: json.loads((d / 'final.json').read_text())['final_score'])
+        final = json.loads((run / 'final.json').read_text())
+        data = np.load(run / 'top.npz')
+        cfg = json.loads(str(data['config']))
+        n = min(TABLE_ENTRIES, len(data['keys']))
+        agent = rf.FastTabular.from_entries(cfg, data['keys'][:n], data['vals'][:n], data['visits'][:n])
+        res = agent.evaluate(1000, 2024)  # the final evaluation of the experiment
+        boards = [fb.decode(k, 4, 4) for k in data['keys'][:n]]
+        after = method == 'afterstate_sarsa'
+        if after:
+            tables[method] = {'keys': ''.join(board_key(b) for b in boards),
+                              'values': b64(data['vals'][:n, 0])}
+        else:
+            acts, _ = agent.greedy_actions(boards)
+            tables[method] = {'keys': ''.join(board_key(b) for b in boards),
+                              'actions': ''.join(CHARS[ACTIONS.index(a)] for a in acts)}
+        what = 'afterstates' if after else 'boards'
+        meta[method] = {
+            'after': after,
+            'stats': {f'eval_{k}': res[k] for k in ('score', 'moves', 'p256', 'p512', 'p1024', 'p2048', 'unseen')},
+            'note': (f"{num(final['episodes'])} episodes, score reward, "
+                     f"{'sample averages' if method == 'mc_control' else 'alpha 0.1'}, epsilon 0.1, "
+                     f"seed {final['seed']}, the best of {len(runs)}. The table holds {num(final['states'])} "
+                     f"{what}; the page uses the {num(n)} met most often in training (with the whole table "
+                     f"{num(round(final['final_score']))} points, {final['final_unseen']:.0%} of the moves on "
+                     f"unseen boards); elsewhere it plays the corner rule")}
+        print(f"4x4 {method}: seed {final['seed']}, {n} of {final['states']:,} {what}: "
+              f"{res['score']:.0f} points against {final['final_score']:.0f} with the whole table; "
+              f"unseen {res['unseen']:.1%} against {final['final_unseen']:.1%}")
+    return meta, tables
+
+
 def export_4x4():
     import ntuple2048 as nt
     out = {'rows': 4, 'cols': 4, 'target': 2048, 'p4': 0.1}
@@ -284,6 +339,10 @@ def export_4x4():
     out['rules'] = {k: {'score': round(float(v['mean_score'])),
                         'p512': float(v['p_ge_512']), 'p1024': float(v['p_ge_1024'])}
                     for k, v in bench.items()}
+    meta, tables = export_4x4_tabular()
+    if meta:
+        out['tabular'] = meta
+        write_js('4x4_tabular', tables)
     for folder, prefix, pid, how in DQN_4X4:
         run = best_run(folder, prefix, 'final_score')
         final = json.loads((run / 'final.json').read_text())

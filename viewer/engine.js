@@ -189,6 +189,32 @@
     };
   }
 
+  /* Sarsa on afterstates with a table V over afterstates (exported for the
+     afterstates met most often in training): q(x,u) = r(x,u) + V[M(x,u)],
+     an afterstate without an entry counting 0 (the initial value); a board
+     none of whose afterstates has an entry plays the corner rule, as in
+     rl2048.AfterstateSarsa.greedy_action with the corner fallback. */
+  function afterstateTablePolicy(game, keyIndex, values) {
+    const V = (after) => {
+      const i = keyIndex.get(game.key(after));
+      return i === undefined ? undefined : values[i];
+    };
+    const policy = function (board, moves) {
+      let known = false;
+      const q = moves.map((m) => {
+        const v = V(m.after);
+        if (v !== undefined) known = true;
+        return m.points + (v === undefined ? 0 : v);
+      });
+      if (!known) return { move: moves[0], unseen: true };
+      let best = 0;
+      for (let k = 1; k < moves.length; k++) if (q[k] > q[best]) best = k;
+      return { move: moves[best], unseen: false };
+    };
+    policy.V = V;
+    return policy;
+  }
+
   /* Semi-gradient Sarsa with n-tuple features: q(x,u) = r(x,u) + V(M(x,u)). */
   function ntuplePolicy(nt) {
     const W = decodeF32(nt.W);
@@ -382,7 +408,7 @@
   }
 
   const Engine = { ACTIONS, CHAR_TO_ACTION, slideLine, makeGame, rngFrom, decodeF32, decodeF16,
-                   rules, tablePolicy, ntuplePolicy, dqnPolicy, cnnPolicy };
+                   rules, tablePolicy, afterstateTablePolicy, ntuplePolicy, dqnPolicy, cnnPolicy };
   if (typeof module !== 'undefined' && module.exports) module.exports = Engine;
   else root.Engine = Engine;
 })(typeof window !== 'undefined' ? window : globalThis);

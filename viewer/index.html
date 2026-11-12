@@ -243,7 +243,7 @@ footer.foot a { color: var(--ink); text-underline-offset: 2px; }
 </main>
 
 <footer class="wrap foot">
-  <p>Data written by <code>experiments/export_viewer.py</code>. The tabular agents are retrained with the configuration and the seed of the best run of each method in the report; the deep Q-networks of the final test are the saved networks of the best seed of each configuration. On the 2×3 board every policy is a table over the 27 022 decision states, and its P(win) is exact (policy evaluation by dynamic programming); on boards a learned table never visited, the corner rule plays. On the 4×4 board the page computes the moves of the networks itself, the convolutional one with its 2 million weights in half precision. The agents marked “Not in the report” use the n-tuple features of the strongest players of the literature, which the report only cites.</p>
+  <p>Data written by <code>experiments/export_viewer.py</code>. The tabular agents are retrained with the configuration and the seed of the best run of each method in the report; the deep Q-networks of the final test are the saved networks of the best seed of each configuration. On the 2×3 board every policy is a table over the 27 022 decision states, and its P(win) is exact (policy evaluation by dynamic programming); on boards a learned table never visited, the corner rule plays. On the 4×4 board the tabular methods, with the settings of the 2×3 runs, end their 200 000 episodes with tables of tens of millions of boards, nearly all met only once: the page uses the 50 000 boards met most often by the best seed, and plays the corner rule elsewhere; their statistics are those of these tables. The page computes the moves of the networks itself, the convolutional one with its 2 million weights in half precision. The agents marked “Not in the report” use the n-tuple features of the strongest players of the literature, which the report only cites.</p>
   <p>Project: 2048 as a Markov decision problem, Dynamic Programming and Reinforcement Learning, University of Siena, by Edoardo Caproni and Tommaso Quintabà. <a href="https://github.com/EdoardoCaproni/2048">Code and report</a>.</p>
 </footer>
 
@@ -315,6 +315,29 @@ footer.foot a { color: var(--ink); text-underline-offset: 2px; }
                  stats: [['Mean score (10 000 games)', fmt(r.score)], ['Reaches 512', pct(r.p512)], ['Reaches 1024', pct(r.p1024)]],
                  fn: E.rules[id] });
     }
+    // the tabular methods: their tables load only when one of them is chosen
+    const tabLabels = { mc_control: 'Monte Carlo control', sarsa: 'Sarsa', q_learning: 'Q-learning',
+                        expected_sarsa: 'Expected Sarsa', nstep_sarsa: '3-step Sarsa',
+                        afterstate_sarsa: 'Sarsa on afterstates' };
+    for (const [method, label] of Object.entries(tabLabels)) {
+      const t = (d.tabular || {})[method];
+      if (!t) continue;
+      const s = t.stats;
+      pol.push({ id: `tab_${method}`, group: 'Tabular RL', label, note: t.note,
+                 stat: `${fmt(s.eval_score)} pts`, kind: t.after ? 'after4' : 'table4',
+                 stats: [['Mean score (1 000 games)', fmt(s.eval_score)], ['Reaches 256', pct(s.eval_p256)],
+                         ['Reaches 512', pct(s.eval_p512)], ['Reaches 1024', pct(s.eval_p1024)],
+                         ['Moves on boards not in the table', pct(s.eval_unseen)]],
+                 fn: null, needs: 'data_4x4_tabular.js',
+                 make: () => {
+                   const T = DATA['4x4_tabular'][method];
+                   const n = d.rows * d.cols;  // one hexadecimal digit per cell
+                   const keyIndex = new Map();
+                   for (let i = 0; i < T.keys.length / n; i++) keyIndex.set(T.keys.substr(i * n, n), i);
+                   return t.after ? E.afterstateTablePolicy(game, keyIndex, E.decodeF32(T.values))
+                     : E.tablePolicy(game, keyIndex, T.actions);
+                 } });
+    }
     const nets = [['dqn', 'DQN, tutorial schedule'], ['dqn_gpu', 'DQN on the GPU, perceptron'],
                   ['dqn_cnn', 'DQN on the GPU, convolutional']];
     for (const [id, label] of nets) {
@@ -341,33 +364,68 @@ footer.foot a { color: var(--ink); text-underline-offset: 2px; }
     return { id: '4x4', game, policies: pol };
   }
   if (DATA['4x4']) boards['4x4'] = build4x4(DATA['4x4']);
+
+  /* Data files loaded on demand (each one once). */
+  const scripts = {};
+  function loadScript(src) {
+    if (!scripts[src]) {
+      scripts[src] = new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = () => resolve();
+        s.onerror = () => { delete scripts[src]; reject(new Error(src)); };
+        document.head.appendChild(s);
+      });
+    }
+    return scripts[src];
+  }
+  function showLoading(text) {
+    $('phase').textContent = 'loading';
+    $('phase').className = 'chip';
+    $('caption').textContent = text;
+  }
+  const after = (fn) => setTimeout(fn, 30);  // let the caption paint before the data is decoded
+
   let loading4x4 = false;
   function load4x4() {
     if (loading4x4) return;
     loading4x4 = true;
-    $('phase').textContent = 'loading';
-    $('phase').className = 'chip';
-    $('caption').textContent = 'loading the 4×4 agents (about 8 MB)';
+    showLoading('loading the 4×4 agents (about 8 MB)');
     const fail = () => {
       loading4x4 = false;
       $('b-2x3').setAttribute('aria-pressed', String(S.board === '2x3'));
       $('b-4x4').setAttribute('aria-pressed', 'false');
       $('caption').textContent = 'The 4×4 agents did not load (data_4x4.js).';
     };
-    const s = document.createElement('script');
-    s.src = 'data_4x4.js';
-    s.onerror = fail;
-    s.onload = () => {
+    loadScript('data_4x4.js').then(() => {
       const d = (window.VIEWER_DATA || {})['4x4'];
       if (!d) { fail(); return; }
-      setTimeout(() => {  // let the caption paint before the weights are decoded
+      after(() => {
         boards['4x4'] = build4x4(d);
         loading4x4 = false;
         if (S.want === '4x4') selectBoard('4x4');
         else renderInfo();
-      }, 30);
-    };
-    document.head.appendChild(s);
+      });
+    }).catch(fail);
+  }
+
+  /* Calls done() once the policy can play: a policy whose data is in a file
+     not loaded yet (the 4x4 tables) is built after loading it. */
+  function ensurePolicy(p, done) {
+    if (p.fn) { done(); return; }
+    const controls = ['fast', 'reset', 'play', 'step', 'new'];
+    S.busy = true;
+    controls.forEach((id) => { $(id).disabled = true; });
+    showLoading(`loading the table of ${p.label}`);
+    const finish = () => { S.busy = false; controls.forEach((id) => { $(id).disabled = false; }); };
+    loadScript(p.needs).then(() => after(() => {
+      p.fn = p.make();
+      finish();
+      done();
+    })).catch(() => {
+      finish();
+      $('caption').textContent = `The table of ${p.label} did not load (${p.needs}).`;
+    });
   }
 
   // ---------------- the board: tiles that slide ----------------
@@ -578,6 +636,12 @@ footer.foot a { color: var(--ink); text-underline-offset: 2px; }
     } else if (pol.kind === 'ntuple') {
       title = 'Agent’s value of each move'; unit = 'r + V(afterstate)';
       val = (m) => m.points + pol.fn.V(m.after);
+    } else if (pol.kind === 'table4' || (pol.kind === 'after4' && G.choice && G.choice.unseen)) {
+      title = 'Points of each move'; unit = G.choice && G.choice.unseen ? 'unseen: corner rule' : 'board in the table';
+      val = (m) => m.points;
+    } else if (pol.kind === 'after4') {
+      title = 'Agent’s value of each move'; unit = 'r + V(afterstate)';
+      val = (m) => m.points + (pol.fn.V(m.after) || 0);
     } else if (pol.kind === 'dqn') {
       title = 'Network’s value of each move'; unit = 'Q × 2048';
       const q = (G.choice && G.choice.q) || pol.fn.q(G.board);
@@ -881,8 +945,12 @@ footer.foot a { color: var(--ink); text-underline-offset: 2px; }
     renderPolicyList();
     const g = boards[id].game;
     R.layout(g.rows, g.cols, g.targetExp);
-    newGame(S.seed);
-    if (wasPlaying) setPlaying(true);
+    const p = curPolicy();
+    ensurePolicy(p, () => {
+      if (S.board !== id || curPolicy() !== p) return;  // the choice changed meanwhile
+      newGame(S.seed);
+      if (wasPlaying) setPlaying(true);
+    });
   }
   function selectPolicy(id) {
     if (S.busy) return;
@@ -890,8 +958,13 @@ footer.foot a { color: var(--ink); text-underline-offset: 2px; }
     renderPolicyList();
     const wasPlaying = S.playing;
     setPlaying(false);
-    newGame(S.seed);  // same seed: compare policies on the same tiles
-    if (wasPlaying) setPlaying(true);
+    const p = curPolicy();
+    const board = S.board;
+    ensurePolicy(p, () => {
+      if (S.board !== board || curPolicy() !== p) return;
+      newGame(S.seed);  // same seed: compare policies on the same tiles
+      if (wasPlaying) setPlaying(true);
+    });
   }
   function setSpeed(idx) {
     S.speedIdx = idx;
