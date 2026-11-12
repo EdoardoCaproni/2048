@@ -142,19 +142,19 @@ Every policy is measured by its exact win probability, whatever reward it learne
 
 Prediction estimates the value $`v_\pi`$ of a fixed policy from its episodes alone. We take the optimal policy and the win reward, so the true answer $`v_\pi=V^*`$ is known exactly. All methods use a constant step size $`\alpha`$ and $`\gamma=1`$.
 
-- **TD(0)** moves the estimate of a state towards the reward plus the estimate of the next state:
+**TD(0)** moves the estimate of a state towards the reward plus the estimate of the next state:
 
-  ```math
-  V(S_t)\leftarrow V(S_t)+\alpha\big[R_{t+1}+V(S_{t+1})-V(S_t)\big].
-  ```
+```math
+V(S_t)\leftarrow V(S_t)+\alpha\big[R_{t+1}+V(S_{t+1})-V(S_t)\big].
+```
 
-- **n-step TD** looks $`n`$ steps ahead before using an estimate ($`n=2,4,8,16`$):
+**n-step TD** looks $`n`$ steps ahead before using an estimate ($`n=2,4,8,16`$):
 
-  ```math
-  G_{t:t+n}=R_{t+1}+\dots+R_{t+n}+V(S_{t+n}),\qquad V(S_t)\leftarrow V(S_t)+\alpha\big[G_{t:t+n}-V(S_t)\big].
-  ```
+```math
+G_{t:t+n}=R_{t+1}+\dots+R_{t+n}+V(S_{t+n}),\qquad V(S_t)\leftarrow V(S_t)+\alpha\big[G_{t:t+n}-V(S_t)\big].
+```
 
-- **Constant-$`\alpha`$ Monte Carlo** uses the full return of the game, $`G_t`$, as target: the limit $`n\to\infty`$.
+**Constant-α Monte Carlo** uses the full return of the game, $`G_t`$, as target: the limit $`n\to\infty`$.
 
 The error is the root mean square error against $`V^*`$, weighted by how often the policy visits each state. On this game the ranking of the textbook random walk is reversed at the start: Monte Carlo is faster than TD(0), because the only reward comes at the end of a 33-move game and TD(0) passes it back one state per visit. With a longer budget an intermediate $`n`$ wins (8-step TD).
 
@@ -162,45 +162,47 @@ The error is the root mean square error against $`V^*`$, weighted by how often t
 
 Six control methods of the course, each keeping a table of values and improving the policy as the values change.
 
-- **Monte Carlo control** (on-policy, first visit, $`\epsilon`$-soft): after each game, $`Q(S_t,A_t)`$ moves to the average of the observed returns $`G_t`$. Since no state repeats within a game, first-visit and every-visit coincide.
-- **Sarsa** (on-policy TD): uses the next move actually played,
+**Monte Carlo control** (on-policy, first visit, ε-soft): after each game, $`Q(S_t,A_t)`$ moves to the average of the observed returns $`G_t`$. Since no state repeats within a game, first-visit and every-visit coincide.
 
-  ```math
-  Q(S_t,A_t)\leftarrow Q(S_t,A_t)+\alpha\big[R_{t+1}+Q(S_{t+1},A_{t+1})-Q(S_t,A_t)\big].
-  ```
+**Sarsa** (on-policy TD) uses the next move actually played:
 
-- **Q-learning** (off-policy TD): uses the best next move, so it learns the optimal values $`q_*`$ whatever the exploration,
+```math
+Q(S_t,A_t)\leftarrow Q(S_t,A_t)+\alpha\big[R_{t+1}+Q(S_{t+1},A_{t+1})-Q(S_t,A_t)\big].
+```
 
-  ```math
-  Q(S_t,A_t)\leftarrow Q(S_t,A_t)+\alpha\big[R_{t+1}+\max_a Q(S_{t+1},a)-Q(S_t,A_t)\big].
-  ```
+**Q-learning** (off-policy TD) uses the best next move, so it learns the optimal values $`q_*`$ whatever the exploration:
 
-- **Expected Sarsa:** uses the average over the next moves of the $`\epsilon`$-greedy policy, a target with less variance than Sarsa's,
+```math
+Q(S_t,A_t)\leftarrow Q(S_t,A_t)+\alpha\big[R_{t+1}+\max_a Q(S_{t+1},a)-Q(S_t,A_t)\big].
+```
 
-  ```math
-  Q(S_t,A_t)\leftarrow Q(S_t,A_t)+\alpha\Big[R_{t+1}+\sum_a \pi(a\mid S_{t+1})\,Q(S_{t+1},a)-Q(S_t,A_t)\Big].
-  ```
+**Expected Sarsa** uses the average over the next moves of the ε-greedy policy, a target with less variance than Sarsa's:
 
-- **n-step Sarsa** ($`n=3`$): Sarsa with the target $`R_{t+1}+R_{t+2}+R_{t+3}+Q(S_{t+3},A_{t+3})`$.
-- **Sarsa on afterstates.** Two different moves from two different boards can lead to the same afterstate, and from there the future is the same. So we keep one value per afterstate and write the value of a move as
+```math
+Q(S_t,A_t)\leftarrow Q(S_t,A_t)+\alpha\Big[R_{t+1}+\sum_a \pi(a\mid S_{t+1})\,Q(S_{t+1},a)-Q(S_t,A_t)\Big].
+```
 
-  ```math
-  Q(x,u)=r(x,u)+V\big(M(x,u)\big).
-  ```
+**n-step Sarsa** ($`n=3`$) is Sarsa with the target $`R_{t+1}+R_{t+2}+R_{t+3}+Q(S_{t+3},A_{t+3})`$.
 
-  This is exact, not an approximation: the true value of a move depends on $`(x,u)`$ only through its points and its afterstate. The agent uses the slide rule $`M`$ but never the probabilities of the new tile. With this $`Q`$ the reward cancels in the Sarsa error, and the update becomes an update of one afterstate value ($`Y_t=M(S_t,A_t)`$, target 0 at game over):
+**Sarsa on afterstates.** Two different moves from two different boards can lead to the same afterstate, and from there the future is the same. So we keep one value per afterstate and write the value of a move as
 
-  ```math
-  V(Y_t)\leftarrow V(Y_t)+\alpha\big[r(S_{t+1},A_{t+1})+V(Y_{t+1})-V(Y_t)\big].
-  ```
+```math
+Q(x,u)=r(x,u)+V\big(M(x,u)\big).
+```
 
-  Every update improves all the moves, from all the boards, that lead to the same afterstate, which is why this method learns fastest. The same update with a linear approximation of $`V`$ is the core of the strongest published 2048 players (Szubert & Jaśkowski 2014 and their successors; see the report, Section 7).
+This is exact, not an approximation: the true value of a move depends on $`(x,u)`$ only through its points and its afterstate. The agent uses the slide rule $`M`$ but never the probabilities of the new tile. With this $`Q`$ the reward cancels in the Sarsa error, and the update becomes an update of one afterstate value ($`Y_t=M(S_t,A_t)`$, target 0 at game over):
+
+```math
+V(Y_t)\leftarrow V(Y_t)+\alpha\big[r(S_{t+1},A_{t+1})+V(Y_{t+1})-V(Y_t)\big].
+```
+
+Every update improves all the moves, from all the boards, that lead to the same afterstate, which is why this method learns fastest. The same update with a linear approximation of $`V`$ is the core of the strongest published 2048 players (Szubert & Jaśkowski 2014 and their successors; see the report, Section 7).
 
 ### Exploration
 
-- **$`\epsilon`$-greedy:** with probability $`\epsilon`$ a uniformly random legal move, otherwise the move with the largest $`Q`$ (ties broken in the order down, left, right, up, so an agent with all-zero values plays the corner rule).
+- **ε-greedy:** with probability $`\epsilon`$ a uniformly random legal move, otherwise the move with the largest $`Q`$ (ties broken in the order down, left, right, up, so an agent with all-zero values plays the corner rule).
 - **Optimistic initial values:** start every $`Q`$ at 1, the largest possible win probability. Every untried move looks promising until it has been tried, so the agent explores every move once and then follows the best. With the sparse win reward this removes the dead start of a learner that has never seen a win.
-- **Step-size and exploration schedules:** constant $`\alpha`$ and $`\epsilon`$ against linearly decaying ones ($`\epsilon`$ from 0.3 to 0.01, $`\alpha`$ from 0.2 to 0.02), and a grid over constant values.
+- **Step-size and exploration schedules:** constant α and ε against linearly decaying ones (ε from 0.3 to 0.01, α from 0.2 to 0.02), and a grid over constant values.
 
 ### Exact learning curves
 
