@@ -6,6 +6,7 @@
 \usepackage{amsmath,amssymb,amsthm}
 \usepackage{booktabs}
 \usepackage{array}
+\usepackage{tabularx}
 \usepackage{enumitem}
 \usepackage{microtype}
 \usepackage{algorithm}
@@ -37,7 +38,7 @@
 \maketitle
 
 \begin{abstract}
-2048 is a puzzle for one player whose rules define a Markov decision problem with a known model. We solve small versions of the game exactly by dynamic programming. Because the sum of the tiles grows at every move, it works as a clock: the game is a total-cost problem that every policy finishes in a bounded number of moves, value iteration becomes exact after finitely many iterations, and ordering the states by tile sum turns it into a single backward pass. The exact solution shows how far the usual rules of thumb are from optimal play (on the $2\times3$ board with target 64 the corner rule wins 0.07\% of the games, the optimal policy 93.9\%) and how much of the outcome is luck. We then forget the model and learn from a simulator with the methods of the course, using the exact solution to measure every learned policy without simulation noise. The project started from a reward built on the players' rules of thumb (free cells, a growing tile sum, a bonus for each new largest tile); adding up its parts over a game showed that two of them carry no information about which move is better and the third is a graded win reward, and the exact solution confirmed that it leads to the same play as the game score, which we adopted. In prediction, Monte Carlo beats TD(0) on this long game with a sparse reward, and intermediate $n$-step TD beats both. In control, tabular Q-learning wins up to 88\% of the games and Sarsa with the values written through the afterstates (the board after the move, before the random tile) learns fastest. A deep Q-network built as in the PyTorch tutorial is our final test on the original $4\times4$ board. We close with what is known about the game: whether it can always be won (open; the best lower bound is 0.99969), whether an optimal strategy is known (no; the problem is NP-hard on general boards), and which methods play it best: the published players that learn afterstate values with $n$-tuple features, the same update as our best tabular method at a much larger scale.
+2048 is a puzzle for one player whose rules define a Markov decision problem with a known model. We solve small versions of the game exactly by dynamic programming. Because the sum of the tiles grows at every move, it works as a clock: the game is a total-cost problem that every policy finishes in a bounded number of moves, value iteration becomes exact after finitely many iterations, and ordering the states by tile sum turns it into a single backward pass. The exact solution shows how far the usual rules of thumb are from optimal play (on the $2\times3$ board with target 64 the corner rule wins 0.07\% of the games, the optimal policy 93.9\%) and how much of the outcome is luck. We then forget the model and learn from a simulator with the methods of the course, using the exact solution to measure every learned policy without simulation noise. The project started from a reward built on the players' rules of thumb (free cells, a growing tile sum, a bonus for each new largest tile); adding up its parts over a game showed that two of them carry no information about which move is better and the third is a graded win reward, and the exact solution confirmed that it leads to the same play as the game score, which we adopted. In prediction, Monte Carlo beats TD(0) on this long game with a sparse reward, and intermediate $n$-step TD beats both. In control, tabular Q-learning wins up to 88\% of the games and Sarsa with the values written through the afterstates (the board after the move, before the random tile) learns fastest. A deep Q-network built as in the PyTorch tutorial is our final test on the original $4\times4$ board: played on a thousand games at once on a GPU and with a convolutional network, it reaches 17\,485 points on average and the 2048 tile in 36\% of the games, about six times the score of the rules of thumb but well below the published $n$-tuple players. We close with what is known about the game: whether it can always be won (open; the best lower bound is 0.99969), whether an optimal strategy is known (no; the problem is NP-hard on general boards), and which methods play it best: the published players that learn afterstate values with $n$-tuple features, the same update as our best tabular method at a much larger scale.
 \end{abstract}
 
 \section{Motivation}
@@ -206,7 +207,7 @@ Table~\ref{tab:vi} confirms this with $\delta=0$. On every board value iteration
 The backward recursion of Algorithm~1 is the same iteration with two changes: the states are updated in place (Gauss--Seidel) and in decreasing tile sum. Each update then uses values of later stages that are already final, so the first sweep gives $V^*$ and the second only confirms it (Table~\ref{tab:vi}). It does the work of one iteration instead of 47 on the $2\times3$ board, about 55 times less time. This is why we solve the larger boards of Table~\ref{tab:states} with it.
 
 \begin{table}[ht]
-\centering\small
+\centering\small\setlength{\tabcolsep}{4.5pt}
 \begin{tabular}{llrrrrrr}
 \toprule
 Board & Objective & $|\X|$ & Stages & \multicolumn{2}{c}{Value iteration} & $\max_x|V^{\mathrm{VI}}-V^*|$ & Gauss--Seidel\\
@@ -436,7 +437,7 @@ Before learning to play, we study a simpler problem, prediction: estimate the va
 \end{itemize}
 All the estimates start from $V_0=0.5$, as in Example~6.2. The error is $\sqrt{\overline{VE}}$ of \S9.2: the RMSE against $V^*$, weighted by how often the policy visits each state, the same weighting used for the control methods below. Each run simulates 20\,000 games of the optimal policy; all the methods learn from the same games; the results are averaged over 50 runs. Since no state repeats within a game, the updates of a game can be applied when it ends, in the order of the online algorithm, with the same result.
 
-\begin{figure}[ht]
+\begin{figure}[htbp]
 \centering
 \fig{fig_pred_curves}
 \fig{fig_pred_nstep}
@@ -486,7 +487,7 @@ So the Sarsa update of $Q(S_t,A_t)$ becomes an update of one afterstate value, $
 
 \paragraph{Setup.} Every method is run for 200\,000 episodes with $\alpha=0.1$, $\epsilon=0.1$ and 5 seeds, in three settings: score reward; win reward with zero initial values; win reward with optimistic initial values $Q=1$ (\cite[\S2.6]{sutton2018}). The greedy policy is evaluated exactly every 2\,000 episodes. The greedy choice breaks ties in the order \act{down}, \act{left}, \act{right}, \act{up}, so an agent whose values are all zero plays the corner rule.
 
-\begin{figure}[ht]
+\begin{figure}[htbp]
 \centering
 \begin{subfigure}[b]{0.48\textwidth}
 \fig{fig_tab_pwin_score_q0}
@@ -524,14 +525,14 @@ So the Sarsa update of $Q(S_t,A_t)$ becomes an update of one afterstate value, $
 \end{itemize}
 Replacing the constants with decaying schedules ($\epsilon$ from 0.3 to 0.01 and $\alpha$ from 0.2 to 0.02, linearly over the run) does not help the one-step methods within this budget (Figure~\ref{fig:schedule}). Q-learning ends at 0.72 instead of 0.76, Sarsa and Expected Sarsa at 0.70. The heavy early exploration wastes episodes on positions the greedy policy never visits, and the late small step sizes freeze the estimates before they are accurate. The methods that pass information further back in each episode do gain: 3-step Sarsa rises from 0.71 to 0.76, and Sarsa on afterstates from 0.80 to 0.85, with an exact expected score of 430 out of 480. The schedules that guarantee convergence in the limit (decreasing $\alpha$, GLIE exploration) are not the fastest for a fixed budget; the right choice depends on how far each update reaches.
 
-\begin{figure}[ht]
+\begin{figure}[htbp]
 \centering
 \fig[0.85\textwidth]{fig_tab_grid}
 \caption{Exact win probability of the greedy policy after 200\,000 episodes with the score reward, as a function of the constant step size $\alpha$ and exploration rate $\epsilon$ (mean over 2 seeds).}
 \label{fig:grid}
 \end{figure}
 
-\begin{figure}[ht]
+\begin{figure}[htbp]
 \centering
 \fig{fig_tab_pwin_schedule}
 \caption{Constant versus decaying $\alpha$ and $\epsilon$, score reward, exact win probability of the greedy policy (mean over 5 seeds, band = min--max).}
@@ -563,47 +564,54 @@ optimal (DP)      & 0.939 & 480 & 1 & 0.939 & 1 & 0 & 0.939 & 1 & 0\\
 \subsection{Final test: deep Q-learning}
 \label{sec:dqn}
 
-\todo{Note for Tommaso: our own $n$-tuple experiments are no longer part of the report; their results are now cited from the literature (Section~\ref{sec:literature}, Table~\ref{tab:literature}). The comparisons with the $n$-tuple agent in this section (text, Table~\ref{tab:dqn}, Figure~\ref{fig:dqn4x4}) need to be updated in your rework.}
+As a final test, outside the methods of the course, the RL part ends with a deep Q-network (DQN)~\cite{mnih2015} built as in the PyTorch tutorial~\cite{paszke_dqn}. DQN is Q-learning (\S6.5) with a neural network approximating the action values (\S9.7), stabilised by two devices that the course does not cover: an \emph{experience replay memory}, from which every update draws a random minibatch of past transitions, and a \emph{target network}, a slowly updated copy of the network that computes the targets $r+\gamma\max_{u'}Q'(x',u')$. Network and hyper-parameters are those of the tutorial: a perceptron with two hidden layers of 128 ReLU units and one output per move; a memory of the last 10\,000 transitions and minibatches of 128; the Huber loss; AdamW with learning rate $3\cdot10^{-4}$ (amsgrad) and gradients clipped at 100; a soft update of the target network after every move, $\theta'\leftarrow0.005\,\theta+0.995\,\theta'$; $\epsilon$-greedy exploration with $\epsilon=0.01+0.89\,e^{-k/2500}$ after $k$ moves; $\gamma=0.99$; one gradient step per move. Only three things are adapted to 2048: the input is the one-hot encoding of the exponent of every cell (16 values per cell); the illegal moves are masked, both when acting and in the max of the target; the reward is the score of the move divided by the target tile (64 or 2048), so that the returns are of order one, which leaves the greedy policy unchanged. Unlike our Sarsa on afterstates (Section~\ref{sec:tabular}) and the $n$-tuple players of the literature (Section~\ref{sec:ntuple}), the network does not use the slide rule: like the plain tabular Q-learning, it learns $q(x,u)$ for the four moves from the board alone, and it must also discover which patterns of the board matter. We train it with the score reward on the $2\times3$ board with target 64, where its greedy policy is evaluated exactly, and on the original $4\times4$ game, evaluated by simulation.
 
-As a final test, outside the methods of the course, the RL part ends with a deep Q-network (DQN)~\cite{mnih2015} built as in the PyTorch tutorial~\cite{paszke_dqn}. DQN is Q-learning (\S6.5) with a neural network approximating the action values (\S9.7), stabilised by two devices that the course does not cover: an \emph{experience replay memory}, from which every update draws a random minibatch of past transitions, and a \emph{target network}, a slowly updated copy of the network that computes the targets $r+\gamma\max_{u'}Q'(x',u')$. Network and hyper-parameters are those of the tutorial: a perceptron with two hidden layers of 128 ReLU units and one output per move; a memory of the last 10\,000 transitions and minibatches of 128; the Huber loss; AdamW with learning rate $3\cdot10^{-4}$ (amsgrad) and gradients clipped at 100; a soft update of the target network after every move, $\theta'\leftarrow0.005\,\theta+0.995\,\theta'$; $\epsilon$-greedy exploration with $\epsilon=0.01+0.89\,e^{-k/2500}$ after $k$ moves; $\gamma=0.99$; one gradient step per move. Only three things are adapted to 2048: the input is the one-hot encoding of the exponent of every cell (16 values per cell); the illegal moves are masked, both when acting and in the max of the target; the reward is the score of the move divided by the target tile (64 or 2048), so that the returns are of order one, which leaves the greedy policy unchanged. Unlike the agents of Sections~\ref{sec:tabular} and~\ref{sec:ntuple}, the network does not use the slide rule: like the plain tabular Q-learning, it learns $q(x,u)$ for the four moves from the board alone, and it must also discover which patterns of the board matter. It is trained with the score reward on the $2\times3$ board with target 64, where its greedy policy is evaluated exactly, and on the original $4\times4$ game, evaluated by simulation, with three seeds each.
+\paragraph{The schedule of the tutorial is too slow.} With one gradient step per move, the tutorial's schedule plays about 550 moves per second on one CPU core: 10\,000 games of the $4\times4$ game take 48 minutes. A GPU does not speed up this loop: with a network this small the time goes into launching the operations and moving the data, not into the arithmetic, and on our laptop GPU the same loop runs at about 480 moves per second. After 10\,000 games the DQN scores 2\,314 points on average and never creates a 1024 tile, below the corner rule (2\,564) and the greedy rule (3\,027), although its curve is still rising (Figure~\ref{fig:dqn4x4}). A check with the rewards divided by 64 or 256 instead of 2\,048 (one seed, 2\,000 games) learns a little faster at the start (1\,407 and 1\,452 points against about 1\,100) without changing the picture. On the $2\times3$ board the same schedule is the fastest learner of the project for a given number of games: its greedy policy wins 0.69 of the games after 2\,000 games and 0.812 after 20\,000 (Figure~\ref{fig:dqn2x3}), while after the same 20\,000 games the tabular Q-learning with the score reward is at 0.35 and the Sarsa on afterstates at 0.65. The network generalises across boards, so a game also improves the values of boards it has not visited, and the replay memory reuses every move in about 128 updates.
+
+\paragraph{Many games on the GPU.} To play many more games we keep the agent and change only the way it uses its data, following the original DQN~\cite{mnih2015} instead of the tutorial. 1\,024 games are played at the same time: one forward pass on the GPU chooses the moves of all of them, and the rules run in our compiled engine. The replay memory holds the last million moves, as in~\cite{mnih2015}, and every move is replayed 8 times on average, in minibatches of 1\,024 (8 times in~\cite{mnih2015}, 128 in the tutorial). Network, loss, optimiser, discount, target network and exploration do not change. Each run now plays about 40\,000 moves per second, with the three seeds sharing the GPU, and 100\,000 games of the $4\times4$ game take 18 minutes. On the $2\times3$ board, after 200\,000 games (6 minutes), the greedy policy wins 0.871 of the games (0.868--0.872 over three seeds), with an expected score of 435: above every tabular method trained with the score reward (at most 0.796 after the same number of games), and level with the best tabular run, Q-learning with the win reward and optimistic initial values (0.875). On the $4\times4$ board, after 100\,000 games, it scores 8\,862 points on average (8\,466--9\,328), reaches 1024 in 41\% of the games and 2048 in 3\%. More games alone are not enough, though: from 40\,000 games on the curve stays at about 8\,800 points (Figure~\ref{fig:dqn4x4}).
+
+\paragraph{A convolutional network.} The perceptron has no way to know that a pair of equal tiles matters in the same way in every row and column; a convolutional network knows it by construction. Ours reads the one-hot board as 16 channels on the $4\times4$ grid. A first layer of $1\times2$ and $2\times1$ convolutions with 128 channels reads the horizontal and vertical pairs of neighbouring cells, the pairs that can merge; a second layer applies $1\times2$ and $2\times1$ convolutions to each of these maps, reading pairs of pairs. All the maps are joined in a hidden layer of 256 units, which gives the four action values: 2.0 million weights, against 50\,000 for the perceptron. The rest is the schedule of the previous paragraph. The network is slower (about 12\,000 moves per second per run, with the two seeds sharing the GPU and its tensor cores in TF32 precision), and 100\,000 games took 90--95 minutes. The runs were stopped at 50\,000 games and resumed from the saved network, with the replay memory first refilled with a million moves of that network: in a test, restarting from an empty memory cost about 6\,500 points. The convolutional network gives the best result of the final test: 14\,027 points after 50\,000 games and 17\,485 after 100\,000 (16\,184--18\,786), with the 1024 tile in 73\% of the games, 2048 in 36\% and 4096 in 1.3\%. With the same number of games it doubles the score of the perceptron and creates the 2048 tile thirteen times as often. The two seeds parted in the second half: one passed 18\,000 points at 70\,000 games and stayed there, the other oscillated around 15\,000 from 60\,000 games on, and by 100\,000 games neither curve was still rising (Figure~\ref{fig:dqn4x4}).
 
 \begin{table}[ht]
 \centering\small
-\begin{tabular}{lrrr>{\raggedright\arraybackslash}p{6.1cm}}
+\begin{tabularx}{\linewidth}{lrrr>{\raggedright\arraybackslash}X}
 \toprule
  & Games & Moves & Time & Greedy policy\\
 \midrule
-DQN, $2\times3$, target 64 & 20\,000 & 0.84 M & 21 min & exact $P(\text{win})=0.812$ (0.807--0.818), score 408, optimal decisions 66\%\\
-Q-learning, tabular & 20\,000 / 200\,000 & & & $P(\text{win})=0.352$ / 0.757\\
-Sarsa on afterstates, tabular & 20\,000 / 200\,000 & & & $P(\text{win})=0.648$ / 0.796\\
+\multicolumn{5}{l}{\emph{$2\times3$ board, target 64}}\\
+DQN, schedule of the tutorial & 20\,000 & 0.84 M & 21 min & exact $P(\text{win})=0.812$ (0.807--0.818), score 408\\
+DQN, many games on the GPU & 200\,000 & 8.6 M & 6 min & exact $P(\text{win})=0.871$ (0.868--0.872), score 435\\
+Q-learning, tabular & 200\,000 & & & $P(\text{win})=0.757$ (score reward), 0.875 (win reward)\\
+Sarsa on afterstates, tabular & 200\,000 & & & $P(\text{win})=0.796$ (score reward), 0.848 (win reward)\\
 optimal policy (DP) & & & & $P(\text{win})=0.939$, score 480\\
 \midrule
-DQN, $4\times4$ & 10\,000 & 1.50 M & 48 min & score 2\,314 (2\,221--2\,461); 256 in 57\%, 512 in 4\%, never 1024\\
-Sarsa, $n$-tuple features & 10\,000 & & & score 16\,252 (6-tuples) / 30\,972 (4-tuples); 2048 in 15\% / 66\%\\
-corner / greedy rule & & & & score 2\,564 / 3\,027; 512 in 5\% / 12\%\\
+\multicolumn{5}{l}{\emph{$4\times4$ board, target 2048}}\\
+DQN, schedule of the tutorial & 10\,000 & 1.5 M & 48 min & 2\,314 points (2\,221--2\,461); 512 in 4\%, never 1024\\
+DQN on the GPU, perceptron & 100\,000 & 43 M & 18 min & 8\,862 points (8\,466--9\,328); 1024 in 41\%, 2048 in 3\%\\
+DQN on the GPU, convolutional & 50\,000 & 26 M & 39 min & 14\,027 points (13\,537--14\,517); 1024 in 65\%, 2048 in 20\%\\
+DQN on the GPU, convolutional & 100\,000 & 65 M & 95 min & 17\,485 points (16\,184--18\,786); 1024 in 73\%, 2048 in 36\%, 4096 in 1.3\%\\
+corner / greedy rule & & & & 2\,564 / 3\,027 points; 512 in 5\% / 12\%\\
 \bottomrule
-\end{tabular}
-\caption{Final test: DQN against the methods of the course, score reward (mean over 3 seeds; time per seed on one CPU core). $2\times3$ board: exact evaluation of the greedy policy; the tabular methods with $\epsilon=0.1$, $\alpha=0.1$ (Table~\ref{tab:tabular}). $4\times4$ board: 1\,000 games with a fixed seed for the DQN and the $n$-tuple agents ($\alpha=0.1$), 10\,000 games for the heuristics.}
+\end{tabularx}
+\caption{Final test: DQN with the score reward (mean over the seeds, range in brackets; three seeds, two for the convolutional network). Time: wall-clock time of one run; the seeds of a configuration ran in parallel, on one CPU core each with the tutorial's schedule and on the same GPU otherwise. $2\times3$ board: exact evaluation of the greedy policy; the tabular methods with $\epsilon=0.1$, $\alpha=0.1$, and optimistic initial values with the win reward (Table~\ref{tab:tabular}). $4\times4$ board: 1\,000 games with a fixed seed, 10\,000 for the rules of thumb.}
 \label{tab:dqn}
 \end{table}
 
-\begin{figure}[ht]
+\begin{figure}[htbp]
 \centering
-\fig{fig_dqn_2x3}
-\caption{Final test on the $2\times3$ board, target 64, score reward: exact win probability and expected score of the greedy policy of the DQN against the tabular Q-learning and Sarsa on afterstates in their first 20\,000 games (mean of 3 and 5 seeds, band = min--max).}
+\fig{fig_dqn_gpu_2x3}
+\caption{Final test on the $2\times3$ board, target 64, score reward: exact win probability of the greedy policy against the training games, for the DQN with the tutorial's schedule (three seeds, 20\,000 games) and with many games on the GPU (three seeds, 200\,000 games), and for the tabular Q-learning and Sarsa on afterstates (five seeds). Band: min--max over the seeds.}
 \label{fig:dqn2x3}
 \end{figure}
 
-\begin{figure}[ht]
+\begin{figure}[htbp]
 \centering
-\fig{fig_dqn_4x4}
-\caption{Final test on the $4\times4$ game. Left: mean score of the greedy policy against the training games, DQN (200 games per point) and semi-gradient Sarsa with $n$-tuple features (1\,000 games per point), with the two rules of thumb. Right: share of the evaluation games reaching each tile.}
+\fig{fig_dqn_gpu_4x4}
+\caption{Final test on the $4\times4$ game. Left: mean score of the greedy policy against the training games (200 games per point), for the DQN with the tutorial's schedule and on the GPU with the perceptron and with the convolutional network, and the two rules of thumb. Right: share of the final evaluation games that reach each tile.}
 \label{fig:dqn4x4}
 \end{figure}
 
-\paragraph{Results.} Table~\ref{tab:dqn} and Figures~\ref{fig:dqn2x3}--\ref{fig:dqn4x4} summarise the runs. On the $2\times3$ board the DQN is the fastest learner of the project: its greedy policy wins 0.69 of the games after 2\,000 games and 0.812 (0.807--0.818 over the seeds) after 20\,000, with an exact expected score of 408 out of 480, while after the same 20\,000 games the tabular Q-learning with the score reward is at 0.35 and the Sarsa on afterstates at 0.65. It ends above all the tabular methods with the score reward after 200\,000 games (at most 0.796) and below the best runs with the win reward and optimism (0.875). Two things make it fast: the network generalises across boards, so a game also improves the values of boards it has not visited, and the replay memory reuses every move in about 128 updates (one minibatch of 128 per move, from a memory of 10\,000 moves), far more computation per game than a tabular update. It does not reach the optimum either: its curve flattens at 0.78--0.81 after 10\,000 games, with 66\% of optimal decisions, because a network of this size cannot represent $V^*$ exactly and because it maximises the discounted score ($\gamma=0.99$), not the win.
-
-On the $4\times4$ board the picture is reversed. After 10\,000 games (1.5 million moves, 48 minutes per seed) the DQN scores 2\,314 on average, reaches 256 in 57\% of the games and 512 in 4\%, and never 1024: it has left random play (1\,084) behind but not yet the corner rule (2\,564) and the greedy rule (3\,027), although its learning curve is still rising (Figure~\ref{fig:dqn4x4}). After the same 10\,000 games, semi-gradient Sarsa with $n$-tuple features scores 16\,000 (6-tuples) to 31\,000 (4-tuples) and reaches 2048 in 15--66\% of the games, with a training time of minutes. The difference is in what each agent is given. The $n$-tuple agent receives the slide rule, through $\hat q(x,u)=r(x,u)+\hat V(M(x,u))$, and features that already describe the board in the terms that matter (the patterns of rows, columns and blocks of cells). The DQN must learn from 16 one-hot cells both the effect of every move and the useful features of the board, with a memory holding only the last 10\,000 moves (about 50 games) and a discount that looks about 100 moves ahead in games of 200 moves and more. A check with the rewards divided by 64 or 256 instead of 2\,048 (one seed, 2\,000 games, \texttt{exp\_dqn.py} with \texttt{scale=64} or \texttt{scale=256}) learns a little faster at the start (1\,407 and 1\,452 points against about 1\,100) without changing the picture. The final test confirms on the real game what the small boards suggest: a generic deep network learns 2048, and on a small board it learns faster than a table, but on the large board the structure built into the course method, the afterstate parametrisation and the $n$-tuple features, is worth more than the extra capacity of the network.
+\paragraph{What the final test shows.} Table~\ref{tab:dqn} and Figures~\ref{fig:dqn2x3}--\ref{fig:dqn4x4} summarise the runs. A generic network learns 2048. On the small board, given enough games, it plays as well as the best table; it still stops short of the optimum (0.871 against 0.939, agreement 0.66 with the optimal decisions), because a network of this size cannot represent $V^*$ exactly and because it maximises the discounted score ($\gamma=0.99$), not the win. On the real game both the amount of data and the network matter: from the tutorial's schedule to many games on the GPU, and from the perceptron to the convolutional network, the mean score grows from 2\,314 to 8\,862 to 17\,485 points, about six times the rules of thumb. It stays well below the $n$-tuple players of the literature, which reach 2048 in over 97\% of the games~\cite{szubert2014}, against 36\% here. Those players are given what the DQN has to learn: the slide rule, through the afterstate values $\hat q(x,u)=r(x,u)+\hat V(M(x,u))$, and features that describe the board in the terms that matter; they also maximise the score without discount, while the DQN looks about 100 moves ahead in games that now last about 1\,000 moves. The convolutional network goes in the same direction as the $n$-tuple features, since it reads patterns of neighbouring cells everywhere on the board, and that alone doubled the score.
 
 \section{The game itself: what is known}
 \label{sec:literature}
@@ -662,14 +670,14 @@ These programs add search (expectimax over the next moves and tiles), larger net
 
 \paragraph{From the small board to the real game.} Tables stop at small boards. The literature (Section~\ref{sec:literature}) shows what happens when our best tabular method, Sarsa on afterstates, is carried to the $4\times4$ board with a linear approximation and $n$-tuple features: over 97\% of games reach 2048~\cite{szubert2014}, and with search, optimism and staged learning the 32768 tile is reached in 72\% of the games~\cite{guei2022}. These players use an update of the course; what separates them from our tabular agent is the scale of the approximation and of the computation.
 
-\paragraph{The final test.} \todo{Tommaso: update after the DQN rework.} The deep Q-network of the PyTorch tutorial, outside the course, is the best learner on the $2\times3$ board for a given number of games (0.81 after 20\,000 games, against 0.65 for the best table at the same point), because the network generalises and the replay memory reuses every move many times. On the $4\times4$ game, after 10\,000 games, it is still below the rules of thumb (2\,300 against 2\,600--3\,000 points).
+\paragraph{The final test.} The deep Q-network of the PyTorch tutorial, outside the course, learns the small board faster than any table for a given number of games, and with many games on a GPU it plays it as well as the best table (0.871 against 0.875). On the $4\times4$ game the tutorial's schedule is too slow to get far (2\,314 points after 10\,000 games, below the rules of thumb); playing a thousand games at once on the GPU, with a larger replay memory, and replacing the perceptron with a convolutional network take it to 17\,485 points and the 2048 tile in 36\% of the games. The $n$-tuple players of the literature still do much better (2048 in over 97\% of the games), because they are given the slide rule and features made for the game: the same lesson as on the small board, where writing the action values through the afterstates made Sarsa learn fastest.
 
 \paragraph{What remains open.} Whether the original game can be won with probability one is unknown (the best lower bound is 0.99969). The optimal policy is out of reach of exact methods, and the problem is NP-hard on general boards, so the strongest strategies are learned approximations, validated by play rather than by proof. Within the methods of the course, the natural next step for this project is the one the literature took: Sarsa on afterstates with a linear approximation on the $4\times4$ board. The small boards would then allow a measure that the literature cannot make: how far the best value function that a given set of features can represent is from $V^*$.
 
 \appendix
 \section{Reproducibility}
 
-The code is at \url{https://github.com/EdoardoCaproni/2048} (Python 3.10 or later, numpy, matplotlib, numba; PyTorch for the final test). The modules are \texttt{game2048.py} (rules of the game and the Gymnasium-style environment; the reference implementation), \texttt{dp2048.py} (exact DP: reachable states by stage, backward recursion, value iteration, policy evaluation, occupancy, Monte Carlo simulation), \texttt{fast2048.py} (the same rules on a 64-bit bitboard compiled with numba, about 50 times faster, checked move by move against the reference implementation by \texttt{test\_2048.py}), \texttt{predict2048.py} (TD(0), $n$-step TD and Monte Carlo prediction), \texttt{shaping2048.py} (the rules-of-thumb reward of Section~\ref{sec:reward}), \texttt{rl2048.py} (tabular control agents and the exact evaluator) and \texttt{dqn2048.py} (the DQN of the final test). Every number and figure of this report is produced by a script in \texttt{experiments/} and written to \texttt{results/}:
+The code is at \url{https://github.com/EdoardoCaproni/2048} (Python 3.10 or later, numpy, matplotlib, numba; PyTorch for the final test). The modules are \texttt{game2048.py} (rules of the game and the Gymnasium-style environment; the reference implementation), \texttt{dp2048.py} (exact DP: reachable states by stage, backward recursion, value iteration, policy evaluation, occupancy, Monte Carlo simulation), \texttt{fast2048.py} (the same rules on a 64-bit bitboard compiled with numba, about 50 times faster, checked move by move against the reference implementation by \texttt{test\_2048.py}), \texttt{predict2048.py} (TD(0), $n$-step TD and Monte Carlo prediction), \texttt{shaping2048.py} (the rules-of-thumb reward of Section~\ref{sec:reward}), \texttt{rl2048.py} (tabular control agents and the exact evaluator), \texttt{dqn2048.py} (the DQN of the final test, with the tutorial's schedule) and \texttt{dqn\_gpu2048.py} (the same agent with many games at once on the GPU, with the perceptron or the convolutional network). Every number and figure of this report is produced by a script in \texttt{experiments/} and written to \texttt{results/}:
 
 \begin{center}\small
 \begin{tabular}{>{\raggedright\arraybackslash}p{5.4cm}>{\raggedright\arraybackslash}p{9.6cm}}
@@ -683,7 +691,8 @@ Script & Produces\\
 \texttt{exp\_tabular\_2x3.py}, \texttt{plot\_tabular.py} & Section~\ref{sec:tabular}: Table~\ref{tab:tabular}, Figure~\ref{fig:tabular} (90 runs, 45 min on 26 cores)\\
 \texttt{exp\_tabular\_grid.py}, \texttt{plot\_schedule.py} & Figures~\ref{fig:grid}, \ref{fig:schedule} (130 runs)\\
 \texttt{eval\_4x4.py} & rules of thumb on the $4\times4$ board, Table~\ref{tab:literature}\\
-\texttt{exp\_dqn.py}, \texttt{plot\_dqn.py} & Section~\ref{sec:dqn}: Table~\ref{tab:dqn}, Figures~\ref{fig:dqn2x3}, \ref{fig:dqn4x4} (6 runs in parallel, 50 min)\\
+\texttt{exp\_dqn.py} & Section~\ref{sec:dqn}: the tutorial's schedule (6 runs in parallel on the CPU, 50 min)\\
+\texttt{exp\_dqn\_gpu.py}, \texttt{plot\_dqn\_gpu.py} & Section~\ref{sec:dqn}: many games on the GPU (6 runs, 18 min; with \texttt{net=cnn}, the convolutional network: 2 runs, 95 min), Table~\ref{tab:dqn}, Figures~\ref{fig:dqn2x3}, \ref{fig:dqn4x4}\\
 \texttt{export\_viewer.py} & data of the policy viewer (best policy of every method, retrained)\\
 \texttt{bench\_engine.py} & throughput of the two engines\\
 \bottomrule
