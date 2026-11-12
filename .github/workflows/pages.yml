@@ -1,0 +1,43 @@
+# Publishes the policy viewer (the folder viewer/) as the GitHub page of the
+# project, https://edoardocaproni.github.io/2048/, at every push to main that
+# changes it, or by hand from the Actions tab (Run workflow).
+# One-time setup, by the owner of the repository: Settings > Pages >
+# Build and deployment > Source: GitHub Actions.
+name: Policy viewer on GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'viewer/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# one deployment at a time; a deployment in progress is not cancelled
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Pages
+        uses: actions/configure-pages@v6
+      - name: Upload the viewer
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: viewer
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5

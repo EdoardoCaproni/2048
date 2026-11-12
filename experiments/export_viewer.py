@@ -1,26 +1,34 @@
-"""Data for the policy viewer (viewer/index.html): the best policy found by
-every method, retrained with the configuration and the seed of its best run
-in the report (the training is deterministic, so these are the same agents),
-and exported as JavaScript files that the page loads.
+"""Data for the policy viewer (viewer/index.html, also published as the
+project's GitHub page): the best policy found by every method of the report,
+exported as JavaScript files that the page loads. The tabular agents are
+retrained with the configuration and the seed of their best run (the
+training is deterministic, so these are the same agents); the DQN networks
+are the saved ones of the best seed of each configuration of the final test.
 
 2x3 board, target 64: every policy is a table over the 27 022 decision
 states (greedy action of the agent; unseen boards fall back to the corner
 rule, as in the exact evaluation), with its exact P(win) and expected score:
     optimal policy (DP), corner rule, greedy rule;
-    MC control, Sarsa, Q-learning, Expected Sarsa, 3-step Sarsa: the best of
-    the 5 seeds x 3 settings of results/tabular/summary.csv;
-    Sarsa on afterstates: full-board table, greedy, optimistic (n-tuple code);
-    semi-gradient Sarsa with n-tuple features (rows, columns, squares);
-    DQN (final test, seed 1).
+    MC control, Sarsa, Q-learning, Expected Sarsa, 3-step Sarsa, Sarsa on
+    afterstates: the best of the 5 seeds x 3 settings of
+    results/tabular/summary.csv;
+    DQN with the tutorial's schedule (results/dqn/) and on the GPU
+    (results/dqn_gpu/): the seed with the largest exact P(win);
+    not in the report: semi-gradient Sarsa with n-tuple features (rows,
+    columns, squares).
 4x4 board, target 2048: the page computes the policies itself:
     corner, greedy and random rules;
-    semi-gradient Sarsa with 4-tuple features (rows, columns, squares,
-    alpha = 0.1, seed 0, 300 000 games: the weights are exported; the
-    6-tuple network is 134 MB, too large for a web page);
-    DQN (final test, seed 1: the weights are exported).
+    DQN with the tutorial's schedule, on the GPU with the perceptron, and on
+    the GPU with the convolutional network: the seed with the largest final
+    mean score; the weights are exported (the convolutional network, 2
+    million weights, in half precision);
+    not in the report: semi-gradient Sarsa with 4-tuple features (rows,
+    columns, squares, alpha = 0.1, seed 0, 300 000 games), the approach of
+    the n-tuple players of the literature.
 
-Outputs: viewer/data_2x3.js, viewer/data_4x4.js; the trained agents are
-cached in results/viewer/.
+Outputs: viewer/data_2x3.js, viewer/data_4x4.js (the page loads the second
+one only when the 4x4 board is chosen); the retrained agents are cached in
+results/viewer/.
 Run from the project root:  python experiments/export_viewer.py [2x3] [4x4]
 (the 4x4 stage trains the n-tuple network for about one hour the first time)
 """
@@ -42,13 +50,18 @@ VIEWER = ROOT / 'viewer'
 CACHE = RESULTS / 'dp_cache' / 'eval_2x3_64.pkl'
 CHARS = 'dlru'  # ACTIONS order: down, left, right, up
 TAB_ALPHA = {'mc_control': None, 'sarsa': 0.1, 'q_learning': 0.1,
-             'expected_sarsa': 0.1, 'nstep_sarsa': 0.1}
-NT_SMALL = {  # name -> (tuples, symmetric, reward, init, seed): best runs on 2x3
-    'afterstate_sarsa': ('full', False, 'win', 1.0, 2),
+             'expected_sarsa': 0.1, 'nstep_sarsa': 0.1, 'afterstate_sarsa': 0.1}
+NT_SMALL = {  # name -> (tuples, symmetric, reward, init, seed); not in the report
     'ntuple_sarsa': ('rcs', True, 'win', 1.0, 2),
 }
 NT_4X4 = dict(tuples='rcs', alpha=0.1, seed=0, games=300_000)
-DQN_SEED = 1
+GROUP_DQN = 'Deep RL (final test)'
+GROUP_EXTRA = 'Not in the report'
+
+
+def num(n):
+    """Integer with spaces between the thousands, as in the report."""
+    return f'{int(n):,}'.replace(',', ' ')
 
 
 def board_key(board):
@@ -77,8 +90,6 @@ def actions_string(boards, action_of):
 def job(spec):
     kind, name = spec['kind'], spec['name']
     path = OUT / f'{name}.json'
-    if path.exists():
-        return name
     t0 = time.perf_counter()
     if kind == 'tabular':
         import rl2048 as rl
@@ -125,6 +136,18 @@ def job(spec):
     path.write_text(json.dumps({'actions': acts, 'info': info}))
     print(f'{name}: {json.dumps(info)}', flush=True)
     return name
+
+
+def cached(spec):
+    """True if results/viewer/ already holds this agent (for a tabular
+    method: trained with the configuration of its current best run)."""
+    path = OUT / f"{spec['name']}.json"
+    if not path.exists():
+        return False
+    if spec['kind'] == 'tabular':
+        info = json.loads(path.read_text())['info']
+        return all(info.get(k) == v for k, v in spec['cfg'].items())
+    return True
 
 
 def best_tabular_runs():
@@ -187,43 +210,92 @@ def export_2x3():
         add(name, 'Rules of thumb', label, acts, *exact(pol),
             'down > left > right > up' if name == 'corner' else 'largest immediate score')
     labels = {'mc_control': 'Monte Carlo control', 'sarsa': 'Sarsa', 'q_learning': 'Q-learning',
-              'expected_sarsa': 'Expected Sarsa', 'nstep_sarsa': '3-step Sarsa'}
+              'expected_sarsa': 'Expected Sarsa', 'nstep_sarsa': '3-step Sarsa',
+              'afterstate_sarsa': 'Sarsa on afterstates'}
     for name in labels:
         d = json.loads((OUT / f'{name}.json').read_text())
         i = d['info']
         reward = 'win reward' + (', optimistic' if i['q_init'] else '') if i['reward'] == 'win' else 'score reward'
         add(name, 'Tabular RL', labels[name], d['actions'], i['p_win'], i['score'],
             f"200 000 episodes, {reward}, epsilon 0.1, seed {i['seed']}")
-    d = json.loads((OUT / 'afterstate_sarsa.json').read_text())
-    add('afterstate_sarsa', 'Tabular RL', 'Sarsa on afterstates', d['actions'],
-        d['info']['p_win'], d['info']['score'],
-        '300 000 games, win reward, optimistic, greedy, seed 2')
+    for folder, pid, label, how in DQN_2X3:
+        run = best_run(folder, '2x3', 'p_win')
+        final = json.loads((run / 'final.json').read_text())
+        agent = dq.DQNAgent(game, seed=0)
+        agent.policy_net.load_state_dict(torch.load(run / 'model.pt', map_location='cpu')['state_dict'])
+        a, _ = agent.greedy_batch(boards)
+        acts = ''.join('-' if x < 0 else CHARS[x] for x in a)
+        p_win, score = exact(dp.table_policy({b: ACTIONS[x] for b, x in zip(boards, a) if x >= 0}))
+        if abs(p_win - final['p_win']) > 1e-6:  # the same policy as in the report
+            raise RuntimeError(f'{run}: exact P(win) {p_win} against {final["p_win"]} in final.json')
+        games = final.get('games') or final['episode']
+        add(pid, GROUP_DQN, label, acts, p_win, score,
+            f"{how}, {num(round(games, -3))} games, score reward, seed {final['seed']}")
     d = json.loads((OUT / 'ntuple_sarsa.json').read_text())
-    add('ntuple_sarsa', 'Function approximation', 'Semi-gradient Sarsa, n-tuple features',
+    add('ntuple_sarsa', GROUP_EXTRA, 'Semi-gradient Sarsa, n-tuple features',
         d['actions'], d['info']['p_win'], d['info']['score'],
+        'the approach of the n-tuple players of the literature (report, Section 7); '
         'rows, columns, squares; 300 000 games, win reward, optimistic, seed 2')
-    agent = dq.DQNAgent(game, seed=0)
-    ckpt = torch.load(RESULTS / 'dqn' / f'2x3_s{DQN_SEED}' / 'model.pt')
-    agent.policy_net.load_state_dict(ckpt['state_dict'])
-    a, _ = agent.greedy_batch(boards)
-    acts = ''.join('-' if x < 0 else CHARS[x] for x in a)
-    final = json.loads((RESULTS / 'dqn' / f'2x3_s{DQN_SEED}' / 'final.json').read_text())
-    add('dqn', 'Deep RL (final test)', 'DQN (PyTorch tutorial)', acts, final['p_win'],
-        final['score'], f"20 000 games, score reward, seed {DQN_SEED}")
     write_js('2x3', {'rows': 2, 'cols': 3, 'target': 64, 'p4': game.p4,
                      'keys': ''.join(board_key(b) for b in boards),
                      'vstar': [int(round(1e6 * V[b])) for b in boards],  # millionths
                      'policies': policies})
 
 
-def export_4x4():
+# DQN of the final test: (results folder, viewer id, label, how it was trained)
+DQN_2X3 = (('dqn', 'dqn', 'DQN, tutorial schedule', "schedule of the PyTorch tutorial"),
+           ('dqn_gpu', 'dqn_gpu', 'DQN on the GPU', "1 024 games at once on the GPU"))
+DQN_4X4 = (('dqn', '4x4', 'dqn', "schedule of the PyTorch tutorial, perceptron"),
+           ('dqn_gpu', '4x4', 'dqn_gpu', "1 024 games at once on the GPU, perceptron"),
+           ('dqn_gpu', 'cnn_4x4', 'dqn_cnn', "1 024 games at once on the GPU, "
+                                             "convolutional network over the pairs of cells"))
+
+
+def best_run(folder, prefix, key):
+    """Folder of the seed of a DQN configuration with the largest final key."""
+    runs = [d for d in sorted((RESULTS / folder).glob(f'{prefix}_s*'))
+            if (d / 'final.json').exists() and (d / 'model.pt').exists()]
+    return max(runs, key=lambda d: json.loads((d / 'final.json').read_text())[key])
+
+
+def export_network(run):
+    """Weights of a saved DQN for the page: the perceptron in single
+    precision, the convolutional network (2 million weights) in half
+    precision, with the shapes of PyTorch."""
     import torch
+    ck = torch.load(run / 'model.pt', map_location='cpu')
+    sd = ck['state_dict']
+    if ck.get('net') == 'cnn':
+        rows, cols, _ = ck['board']
+        return {'kind': 'cnn', 'rows': rows, 'cols': cols,
+                'second': [k.split('.')[1] for k in sd if k.startswith('second.') and k.endswith('.weight')],
+                'tensors': {k: {'shape': list(v.shape), 'data': b64(v.numpy(), np.float16)}
+                            for k, v in sd.items()}}
+    return {'kind': 'mlp',
+            'layers': [{'w': b64(sd[f'layer{i}.weight'].numpy()), 'b': b64(sd[f'layer{i}.bias'].numpy()),
+                        'in': int(sd[f'layer{i}.weight'].shape[1]),
+                        'out': int(sd[f'layer{i}.weight'].shape[0])} for i in (1, 2, 3)]}
+
+
+def export_4x4():
     import ntuple2048 as nt
     out = {'rows': 4, 'cols': 4, 'target': 2048, 'p4': 0.1}
     bench = {r['policy']: r for r in csv.DictReader(open(RESULTS / '4x4' / 'benchmarks.csv'))}
     out['rules'] = {k: {'score': round(float(v['mean_score'])),
                         'p512': float(v['p_ge_512']), 'p1024': float(v['p_ge_1024'])}
                     for k, v in bench.items()}
+    for folder, prefix, pid, how in DQN_4X4:
+        run = best_run(folder, prefix, 'final_score')
+        final = json.loads((run / 'final.json').read_text())
+        games = final.get('games') or final['episode']
+        net = export_network(run)
+        half = '; the page plays it with the weights rounded to half precision' if net['kind'] == 'cnn' else ''
+        out[pid] = dict(net,
+                        stats={'eval_score': final['final_score'], 'eval_moves': final['final_moves'],
+                               **{f'eval_p{t}': final.get(f'final_p{t}', 0.0)
+                                  for t in (512, 1024, 2048, 4096)}},
+                        note=f"{how}; {num(round(games, -3))} games, score reward, seed {final['seed']}; "
+                             f"statistics of 1 000 games{half}")
     npz = OUT / 'ntuple_4x4.npz'
     if npz.exists():
         net = nt.NTupleNet.load(npz)
@@ -231,19 +303,9 @@ def export_4x4():
         out['ntuple'] = {'k': int(net.k), 'cells': net.cells.tolist(), 'owner': net.owner.tolist(),
                          'rows': int(net.W.shape[0]), 'W': b64(net.W),
                          'stats': {k: info[k] for k in info if k.startswith('eval_')},
-                         'note': f"4-tuples (rows, columns, squares), alpha {info['alpha']}, "
-                                 f"{info['games']:,} games, seed {info['seed']}"}
-    ckpt = torch.load(RESULTS / 'dqn' / f'4x4_s{DQN_SEED}' / 'model.pt')
-    sd = ckpt['state_dict']
-    out['dqn'] = {'layers': [{'w': b64(sd[f'layer{i}.weight'].numpy()),
-                              'b': b64(sd[f'layer{i}.bias'].numpy()),
-                              'in': int(sd[f'layer{i}.weight'].shape[1]),
-                              'out': int(sd[f'layer{i}.weight'].shape[0])} for i in (1, 2, 3)]}
-    final = json.loads((RESULTS / 'dqn' / f'4x4_s{DQN_SEED}' / 'final.json').read_text())
-    out['dqn']['stats'] = {'eval_score': final['final_score'], 'eval_moves': final['final_moves'],
-                           'eval_p512': final['final_p512'], 'eval_p1024': final['final_p1024'],
-                           'eval_p2048': final['final_p2048']}
-    out['dqn']['note'] = f"10 000 games, score reward, seed {DQN_SEED}"
+                         'note': f"the approach of the n-tuple players of the literature (report, "
+                                 f"Section 7), with 4-tuples (rows, columns, squares); alpha {info['alpha']}, "
+                                 f"{num(info['games'])} games, score reward, seed {info['seed']}"}
     write_js('4x4', out)
 
 
@@ -259,7 +321,7 @@ def main():
             specs.append({'kind': 'ntuple_small', 'name': name})
     if '4x4' in stages:
         specs.append({'kind': 'ntuple_4x4', 'name': 'ntuple_4x4'})
-    todo = [s for s in specs if not (OUT / f"{s['name']}.json").exists()]
+    todo = [s for s in specs if not cached(s)]
     if todo:
         run_grid(job, todo, processes=len(todo))
     if '2x3' in stages:

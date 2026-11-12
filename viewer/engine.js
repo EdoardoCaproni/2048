@@ -125,16 +125,39 @@
     };
   }
 
-  function decodeF32(b64) {
-    let bytes;
+  function decodeBytes(b64) {
     if (typeof atob === 'function') {
       const s = atob(b64);
-      bytes = new Uint8Array(s.length);
+      const bytes = new Uint8Array(s.length);
       for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
-    } else {
-      bytes = new Uint8Array(Buffer.from(b64, 'base64'));
+      return bytes;
     }
+    return new Uint8Array(Buffer.from(b64, 'base64'));  // a copy, aligned
+  }
+
+  function decodeF32(b64) {
+    const bytes = decodeBytes(b64);
     return new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
+  }
+
+  /* IEEE half precision (numpy float16, little endian) to Float32Array. */
+  function decodeF16(b64) {
+    const bytes = decodeBytes(b64);
+    const h = new Uint16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2);
+    const scale = [];
+    for (let e = 0; e < 32; e++) scale.push(2 ** (e - 25));
+    const out = new Float32Array(h.length);
+    for (let i = 0; i < h.length; i++) {
+      const x = h[i];
+      const e = (x >> 10) & 31;
+      const f = x & 1023;
+      let v;
+      if (e === 0) v = f * 2 ** -24;                 // zero and subnormals
+      else if (e === 31) v = f ? NaN : Infinity;
+      else v = (1024 + f) * scale[e];
+      out[i] = x & 0x8000 ? -v : v;
+    }
+    return out;
   }
 
   /* First move with the largest value (ties: ACTIONS order, as numpy argmax). */
@@ -188,7 +211,8 @@
     return policy;
   }
 
-  /* DQN: one-hot cells (16 values each) -> 128 -> 128 -> 4 Q-values. */
+  /* DQN with the perceptron of dqn2048.py (the tutorial's network): one-hot
+     cells (16 values each) -> 128 -> 128 -> 4 Q-values. */
   function dqnPolicy(d) {
     const L = d.layers.map((l) => ({ w: decodeF32(l.w), b: decodeF32(l.b), in: l.in, out: l.out }));
     function q(board) {
@@ -216,16 +240,149 @@
       }
       return out;
     }
+    return greedyOnQ(q);
+  }
+
+  /* Greedy policy on the legal moves of a Q-network; the choice keeps the
+     four Q-values (field q), so the page does not compute them twice. */
+  function greedyOnQ(q) {
     const policy = function (board, moves) {
       const qv = q(board);
-      return argmax(moves, (m) => qv[ACTIONS.indexOf(m.action)]);
+      const choice = argmax(moves, (m) => qv[ACTIONS.indexOf(m.action)]);
+      choice.q = qv;
+      return choice;
     };
     policy.q = q;
     return policy;
   }
 
-  const Engine = { ACTIONS, CHAR_TO_ACTION, slideLine, makeGame, rngFrom, decodeF32,
-                   rules, tablePolicy, ntuplePolicy, dqnPolicy };
+  /* DQN with the convolutional network PairCNN of dqn_gpu2048.py. The input
+     is the one-hot board, 16 channels on the R x C grid; a first layer of
+     1x2 (h) and 2x1 (v) convolutions reads the pairs of neighbouring cells,
+     a second layer applies 1x2 and 2x1 convolutions to each of these maps
+     (hh, hv, vh, vv: pairs of pairs); all the maps, after ReLU, are joined
+     in a hidden layer (ReLU) that gives the four Q-values. The weights come
+     in half precision with the shapes of PyTorch; the page computes in
+     double precision. The maps are kept cell by cell (all the channels of a
+     cell together, where PyTorch flattens channel by channel), and the
+     hidden-layer weights are permuted to match; the zero inputs after a
+     ReLU are skipped. */
+  function cnnPolicy(d) {
+    const T = {};
+    for (const k of Object.keys(d.tensors)) {
+      T[k] = { shape: d.tensors[k].shape, w: decodeF16(d.tensors[k].data) };
+    }
+    const R = d.rows;
+    const C = d.cols;
+    const [CH, NV] = T['first.h.weight'].shape;  // channels, values per cell
+    const [HID, NIN] = T['hidden.weight'].shape;
+    const TAPS = { h: [[0, 0], [0, 1]], v: [[0, 0], [1, 0]] };  // (dy, dx) of the two cells
+    const dims = { h: [R, C - 1], v: [R - 1, C] };
+    // weights [tap][input][output]: one contiguous vector of outputs per input
+    const transpose = (w, nin) => {
+      const t = new Float32Array(2 * nin * CH);
+      for (let o = 0; o < CH; o++) {
+        for (let i = 0; i < nin; i++) {
+          for (let k = 0; k < 2; k++) t[(k * nin + i) * CH + o] = w[(o * nin + i) * 2 + k];
+        }
+      }
+      return t;
+    };
+    const first = ['h', 'v'].map((name) => ({
+      name, taps: TAPS[name], H: dims[name][0], W: dims[name][1],
+      w: transpose(T[`first.${name}.weight`].w, NV), b: T[`first.${name}.bias`].w,
+    }));
+    const second = d.second.map((name) => {
+      const [Hs, Ws] = dims[name[0]];
+      const taps = TAPS[name[1]];
+      const H = Hs - taps[1][0];
+      const W = Ws - taps[1][1];
+      dims[name] = [H, W];
+      return { name, src: name[0], Ws, taps, H, W,
+               w: transpose(T[`second.${name}.weight`].w, CH), b: T[`second.${name}.bias`].w };
+    });
+    // offsets of the maps in the feature vector, and the permuted hidden weights
+    const offset = {};
+    const Wh = T['hidden.weight'].w;
+    const WH = new Float32Array(NIN * HID);
+    let off = 0;
+    for (const name of ['h', 'v', ...d.second]) {
+      const npos = dims[name][0] * dims[name][1];
+      offset[name] = off;
+      for (let p = 0; p < npos; p++) {
+        for (let o = 0; o < CH; o++) {
+          const src = off + o * npos + p;   // PyTorch: channel by channel
+          const dst = (off + p * CH + o) * HID;
+          for (let j = 0; j < HID; j++) WH[dst + j] = Wh[j * NIN + src];
+        }
+      }
+      off += npos * CH;
+    }
+    if (off !== NIN) throw new Error(`PairCNN: ${off} features, the hidden layer expects ${NIN}`);
+    const bh = T['hidden.bias'].w;
+    const Wo = T['out.weight'].w;
+    const bo = T['out.bias'].w;
+    const feats = new Float64Array(NIN);
+    const acc = new Float64Array(CH);
+    const hid = new Float64Array(HID);
+
+    function q(board) {
+      for (const L of first) {  // one-hot input: two weight vectors per output cell
+        const base = offset[L.name];
+        for (let r = 0; r < L.H; r++) {
+          for (let c = 0; c < L.W; c++) {
+            const e0 = Math.min(board[(r + L.taps[0][0]) * C + c + L.taps[0][1]], NV - 1);
+            const e1 = Math.min(board[(r + L.taps[1][0]) * C + c + L.taps[1][1]], NV - 1);
+            const w0 = e0 * CH;
+            const w1 = (NV + e1) * CH;
+            const out = base + (r * L.W + c) * CH;
+            for (let o = 0; o < CH; o++) {
+              const s = L.b[o] + L.w[w0 + o] + L.w[w1 + o];
+              feats[out + o] = s > 0 ? s : 0;
+            }
+          }
+        }
+      }
+      for (const L of second) {
+        const src = offset[L.src];
+        const base = offset[L.name];
+        for (let r = 0; r < L.H; r++) {
+          for (let c = 0; c < L.W; c++) {
+            for (let o = 0; o < CH; o++) acc[o] = L.b[o];
+            for (let k = 0; k < 2; k++) {
+              const pin = src + ((r + L.taps[k][0]) * L.Ws + c + L.taps[k][1]) * CH;
+              for (let i = 0; i < CH; i++) {
+                const v = feats[pin + i];
+                if (v === 0) continue;
+                const wb = (k * CH + i) * CH;
+                for (let o = 0; o < CH; o++) acc[o] += v * L.w[wb + o];
+              }
+            }
+            const out = base + (r * L.W + c) * CH;
+            for (let o = 0; o < CH; o++) feats[out + o] = acc[o] > 0 ? acc[o] : 0;
+          }
+        }
+      }
+      for (let j = 0; j < HID; j++) hid[j] = bh[j];
+      for (let f = 0; f < NIN; f++) {
+        const v = feats[f];
+        if (v === 0) continue;
+        const wb = f * HID;
+        for (let j = 0; j < HID; j++) hid[j] += v * WH[wb + j];
+      }
+      const out = new Float64Array(4);
+      for (let a = 0; a < 4; a++) {
+        let s = bo[a];
+        for (let j = 0; j < HID; j++) if (hid[j] > 0) s += hid[j] * Wo[a * HID + j];
+        out[a] = s;
+      }
+      return out;
+    }
+    return greedyOnQ(q);
+  }
+
+  const Engine = { ACTIONS, CHAR_TO_ACTION, slideLine, makeGame, rngFrom, decodeF32, decodeF16,
+                   rules, tablePolicy, ntuplePolicy, dqnPolicy, cnnPolicy };
   if (typeof module !== 'undefined' && module.exports) module.exports = Engine;
   else root.Engine = Engine;
 })(typeof window !== 'undefined' ? window : globalThis);

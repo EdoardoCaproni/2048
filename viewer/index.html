@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <!-- artifact:start -->
 <title>2048 Policy Viewer</title>
+<meta name="description" content="The policies of the project 2048 as a Markov decision problem playing by themselves: exact dynamic programming, tabular reinforcement learning and deep Q-networks.">
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
@@ -148,6 +149,7 @@ input[type="number"] { width: 7.5em; font: inherit; font-family: var(--font-data
 .kbd { font-family: var(--font-data); font-size: 0.75rem; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
 footer.foot { padding-block: 4px 32px; color: var(--muted); font-size: 0.82rem; }
 footer.foot p { max-width: 90ch; margin: 6px 0; }
+footer.foot a { color: var(--ink); text-underline-offset: 2px; }
 </style>
 </head>
 <body>
@@ -241,13 +243,12 @@ footer.foot p { max-width: 90ch; margin: 6px 0; }
 </main>
 
 <footer class="wrap foot">
-  <p>Policies retrained by <code>experiments/export_viewer.py</code> with the configuration and the seed of the best run of each method in the report. On the 2×3 board every policy is a table over the 27 022 decision states, and its P(win) is exact (policy evaluation by dynamic programming); on boards a learned table never visited, the corner rule plays. On the 4×4 board the page computes the n-tuple values and the network itself; the n-tuple agent uses the 4-tuple features (the 6-tuple network of the report weighs 134 MB).</p>
-  <p>Project: 2048 as a Markov decision problem, Dynamic Programming and Reinforcement Learning, University of Siena.</p>
+  <p>Data written by <code>experiments/export_viewer.py</code>. The tabular agents are retrained with the configuration and the seed of the best run of each method in the report; the deep Q-networks of the final test are the saved networks of the best seed of each configuration. On the 2×3 board every policy is a table over the 27 022 decision states, and its P(win) is exact (policy evaluation by dynamic programming); on boards a learned table never visited, the corner rule plays. On the 4×4 board the page computes the moves of the networks itself, the convolutional one with its 2 million weights in half precision. The agents marked “Not in the report” use the n-tuple features of the strongest players of the literature, which the report only cites.</p>
+  <p>Project: 2048 as a Markov decision problem, Dynamic Programming and Reinforcement Learning, University of Siena, by Edoardo Caproni and Tommaso Quintabà. <a href="https://github.com/EdoardoCaproni/2048">Code and report</a>.</p>
 </footer>
 
 <script src="engine.js"></script>
 <script src="data_2x3.js"></script>
-<script src="data_4x4.js"></script>
 <script>
 (function () {
   'use strict';
@@ -299,8 +300,9 @@ footer.foot p { max-width: 90ch; margin: 6px 0; }
       })),
     };
   }
-  if (DATA['4x4']) {
-    const d = DATA['4x4'];
+  /* The 4x4 agents: the page computes their moves itself. Their weights
+     (about 8 MB) load only when the 4x4 board is chosen. */
+  function build4x4(d) {
     const game = E.makeGame(d.rows, d.cols, d.target, d.p4);
     const pol = [];
     const ruleInfo = { corner: ['Corner rule', 'down > left > right > up'],
@@ -313,22 +315,59 @@ footer.foot p { max-width: 90ch; margin: 6px 0; }
                  stats: [['Mean score (10 000 games)', fmt(r.score)], ['Reaches 512', pct(r.p512)], ['Reaches 1024', pct(r.p1024)]],
                  fn: E.rules[id] });
     }
+    const nets = [['dqn', 'DQN, tutorial schedule'], ['dqn_gpu', 'DQN on the GPU, perceptron'],
+                  ['dqn_cnn', 'DQN on the GPU, convolutional']];
+    for (const [id, label] of nets) {
+      const net = d[id];
+      if (!net) continue;
+      const s = net.stats;
+      const cnn = net.kind === 'cnn';
+      pol.push({ id, group: 'Deep RL (final test)', label, note: net.note,
+                 stat: `${fmt(s.eval_score)} pts`, kind: 'dqn',
+                 stats: [['Mean score (1 000 games)', fmt(s.eval_score)], ['Reaches 512', pct(s.eval_p512)],
+                         ['Reaches 1024', pct(s.eval_p1024)], ['Reaches 2048', pct(s.eval_p2048)],
+                         ['Reaches 4096', pct(s.eval_p4096)]],
+                 fn: cnn ? E.cnnPolicy(net) : E.dqnPolicy(net),
+                 fastGames: cnn ? 20 : 100 });  // the convolutional network is about 30 times slower
+    }
     if (d.ntuple) {
       const s = d.ntuple.stats;
-      pol.push({ id: 'ntuple', group: 'Function approximation', label: 'Semi-gradient Sarsa, n-tuple features',
+      pol.push({ id: 'ntuple', group: 'Not in the report', label: 'Semi-gradient Sarsa, n-tuple features',
                  note: d.ntuple.note, stat: `${fmt(s.eval_score)} pts`, kind: 'ntuple',
                  stats: [['Mean score (1 000 games)', fmt(s.eval_score)], ['Reaches 1024', pct(s.eval_p1024)],
                          ['Reaches 2048', pct(s.eval_p2048)], ['Reaches 4096', pct(s.eval_p4096)]],
                  fn: E.ntuplePolicy(d.ntuple) });
     }
-    if (d.dqn) {
-      const s = d.dqn.stats;
-      pol.push({ id: 'dqn', group: 'Deep RL (final test)', label: 'DQN (PyTorch tutorial)', note: d.dqn.note,
-                 stat: `${fmt(s.eval_score)} pts`, kind: 'dqn',
-                 stats: [['Mean score (1 000 games)', fmt(s.eval_score)], ['Reaches 512', pct(s.eval_p512)],
-                         ['Reaches 1024', pct(s.eval_p1024)]], fn: E.dqnPolicy(d.dqn) });
-    }
-    boards['4x4'] = { id: '4x4', game, policies: pol };
+    return { id: '4x4', game, policies: pol };
+  }
+  if (DATA['4x4']) boards['4x4'] = build4x4(DATA['4x4']);
+  let loading4x4 = false;
+  function load4x4() {
+    if (loading4x4) return;
+    loading4x4 = true;
+    $('phase').textContent = 'loading';
+    $('phase').className = 'chip';
+    $('caption').textContent = 'loading the 4×4 agents (about 8 MB)';
+    const fail = () => {
+      loading4x4 = false;
+      $('b-2x3').setAttribute('aria-pressed', String(S.board === '2x3'));
+      $('b-4x4').setAttribute('aria-pressed', 'false');
+      $('caption').textContent = 'The 4×4 agents did not load (data_4x4.js).';
+    };
+    const s = document.createElement('script');
+    s.src = 'data_4x4.js';
+    s.onerror = fail;
+    s.onload = () => {
+      const d = (window.VIEWER_DATA || {})['4x4'];
+      if (!d) { fail(); return; }
+      setTimeout(() => {  // let the caption paint before the weights are decoded
+        boards['4x4'] = build4x4(d);
+        loading4x4 = false;
+        if (S.want === '4x4') selectBoard('4x4');
+        else renderInfo();
+      }, 30);
+    };
+    document.head.appendChild(s);
   }
 
   // ---------------- the board: tiles that slide ----------------
@@ -495,7 +534,7 @@ footer.foot p { max-width: 90ch; margin: 6px 0; }
 
   // ---------------- state ----------------
   const S = {
-    board: boards['2x3'] ? '2x3' : '4x4', policy: {}, playing: false, timer: null,
+    board: boards['2x3'] ? '2x3' : '4x4', want: null, policy: {}, playing: false, timer: null,
     speedIdx: 2, showAfter: true, auto: true, seed: 1, busy: false, tally: {},
   };
   let G = null;  // the current game
@@ -541,7 +580,7 @@ footer.foot p { max-width: 90ch; margin: 6px 0; }
       val = (m) => m.points + pol.fn.V(m.after);
     } else if (pol.kind === 'dqn') {
       title = 'Network’s value of each move'; unit = 'Q × 2048';
-      const q = pol.fn.q(G.board);
+      const q = (G.choice && G.choice.q) || pol.fn.q(G.board);
       val = (m) => 2048 * q[E.ACTIONS.indexOf(m.action)];
     } else {
       title = 'Points of each move'; unit = 'r(x, u)'; val = (m) => m.points;
@@ -798,8 +837,10 @@ footer.foot p { max-width: 90ch; margin: 6px 0; }
     renderTally();
   }
 
+  const fastGames = () => curPolicy().fastGames || 100;
   function renderPolicyList() {
     const b = cur();
+    $('fast').textContent = `Play ${fastGames()} games fast`;
     let html = '';
     let group = null;
     for (const p of b.policies) {
@@ -811,22 +852,31 @@ footer.foot p { max-width: 90ch; margin: 6px 0; }
     $('policies').innerHTML = html;
     const p = curPolicy();
     $('m-title').textContent = p.label;
-    $('m-note').textContent = `${p.group}. ${p.note}.`;
+    $('m-note').textContent = `${p.group}. ${p.note.charAt(0).toUpperCase()}${p.note.slice(1)}.`;
     $('m-stats').innerHTML = p.stats.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
   }
 
   // ---------------- controls ----------------
   function selectBoard(id) {
-    if (!boards[id] || S.busy) return;
+    if (S.busy) return;
+    S.want = id;
+    if (id === '4x4' && !boards[id]) {  // first time: load the agents, then come back here
+      setPlaying(false);
+      $('b-2x3').setAttribute('aria-pressed', 'false');
+      $('b-4x4').setAttribute('aria-pressed', 'true');
+      load4x4();
+      return;
+    }
+    if (!boards[id]) return;
     const wasPlaying = S.playing;
     setPlaying(false);
     S.board = id;
     $('b-2x3').setAttribute('aria-pressed', String(id === '2x3'));
     $('b-4x4').setAttribute('aria-pressed', String(id === '4x4'));
     $('gauge').hidden = id !== '2x3';
-    if (!S.policy[id]) {
-      S.policy[id] = id === '2x3' ? 'optimal'
-        : (boards[id].policies.find((p) => p.id === 'ntuple') || boards[id].policies[0]).id;
+    const pols = boards[id].policies;
+    if (!pols.some((p) => p.id === S.policy[id])) {  // default: the best policy of the report
+      S.policy[id] = id === '2x3' ? 'optimal' : (pols.find((p) => p.id === 'dqn_cnn') || pols[0]).id;
     }
     renderPolicyList();
     const g = boards[id].game;
@@ -867,7 +917,7 @@ footer.foot p { max-width: 90ch; margin: 6px 0; }
     const v = Math.max(0, Math.floor(Number(ev.target.value) || 0));
     const p = S.playing; setPlaying(false); newGame(v); if (p) setPlaying(true);
   });
-  $('fast').addEventListener('click', () => playFast(100));
+  $('fast').addEventListener('click', () => playFast(fastGames()));
   $('reset').addEventListener('click', () => {
     delete S.tally[tallyKey()];
     renderTally();
@@ -890,8 +940,9 @@ footer.foot p { max-width: 90ch; margin: 6px 0; }
   }
   function start(saved) {
     saved = saved || {};
-    if (!Object.keys(boards).length) {
-      $('caption').textContent = 'The policy data did not load (data_2x3.js, data_4x4.js).';
+    if (!boards['2x3']) {
+      $('caption').textContent = 'The policy data did not load (data_2x3.js).';
+      $('b-2x3').disabled = true;
       return;
     }
     if (saved.policy) S.policy = saved.policy;
@@ -899,9 +950,8 @@ footer.foot p { max-width: 90ch; margin: 6px 0; }
     setSpeed(Number.isFinite(saved.speedIdx) ? saved.speedIdx : S.speedIdx);
     if (typeof saved.showAfter === 'boolean') { S.showAfter = saved.showAfter; $('after').checked = saved.showAfter; }
     if (typeof saved.auto === 'boolean') { S.auto = saved.auto; $('auto').checked = saved.auto; }
-    if (!boards['4x4']) $('b-4x4').disabled = true;
-    if (!boards['2x3']) $('b-2x3').disabled = true;
-    selectBoard(saved.board && boards[saved.board] ? saved.board : S.board);
+    selectBoard('2x3');
+    if (saved.board === '4x4') selectBoard('4x4');
   }
   if (hot && hot.ready) hot.ready(start); else start(hot && hot.data);
 })();

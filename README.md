@@ -1,7 +1,7 @@
 # 2048 as a Markov decision problem
 
 Project work for *Dynamic Programming and Reinforcement Learning* (University of Siena, A.Y. 2024/25), by Edoardo Caproni and Tommaso Quintabà.
-The full report is [`report/report.pdf`](report/report.pdf).
+The full report is [`report/report.pdf`](report/report.pdf). In the [policy viewer](https://edoardocaproni.github.io/2048/) the best policy found by every method plays in the browser: on the 2x3 board with the exact optimal win probability of every position and move, on the original 4x4 game with the deep Q-networks of the final test computed in the page.
 
 2048 is a puzzle for one player. Every move has two steps: the player slides all the tiles in one direction (deterministic), then a new tile appears in a random empty cell (random). The rules, including the probabilities of the new tile, are completely known, so the game is a Markov decision problem with a known model. Small versions of the game can be solved exactly by dynamic programming; the original 4x4 game cannot, because it has far too many states. The project is built around this gap:
 
@@ -218,7 +218,7 @@ Outside the methods of the course, the RL part ends with a deep Q-network built 
 \text{loss}=\text{Huber}\Big(r+\gamma\max_{u'}Q(x',u';\theta')-Q(x,u;\theta)\Big).
 ```
 
-The input is the one-hot encoding of the exponent of every cell; illegal moves are masked. It is tested on the 2x3 board, where it is evaluated exactly, and on the original 4x4 game.
+The input is the one-hot encoding of the exponent of every cell; illegal moves are masked. It is tested on the 2x3 board, where it is evaluated exactly, and on the original 4x4 game. With the tutorial's schedule (one gradient step per move) it is slow: 2,314 points after 10,000 games of the 4x4 game, below the rules of thumb. Playing 1,024 games at once on a GPU, with a replay memory of a million moves (as in the original DQN), it reaches 0.871 of games won on 2x3 and 8,862 points on 4x4 after 100,000 games; with a convolutional network over the pairs of neighbouring cells, 17,485 points and the 2048 tile in 36% of the games. Neither curve is still rising at 100,000 games, and the n-tuple players of the literature, which are given the slide rule through the afterstates, stay far ahead (2048 in over 97% of the games).
 
 ## Main results
 
@@ -229,7 +229,17 @@ The input is the one-hot encoding of the exponent of every cell; illegal moves a
 | Corner / greedy / random rule | 0.07% / 0.13% / 0.02% |
 | Best tabular learner, win reward with optimism | Q-learning 0.875; Sarsa on afterstates 0.848 |
 | Best tabular learner, score reward | Sarsa on afterstates 0.796 (0.85 with decaying schedules) |
+| DQN (final test), score reward | 0.812 with the tutorial's schedule (20,000 games); 0.871 with many games on the GPU (200,000) |
 | Prediction after 20,000 games (error against $`V^*`$) | 8-step TD 0.080, Monte Carlo 0.085, TD(0) 0.114 |
+
+| | 4x4 board, target 2048: mean score, tiles reached |
+|---|---|
+| Corner / greedy rule | 2,564 / 3,027 points; 512 in 5% / 12% of the games |
+| DQN, tutorial's schedule (10,000 games) | 2,314 points; 512 in 4%, never 1024 |
+| DQN on the GPU, perceptron (100,000 games) | 8,862 points; 1024 in 41%, 2048 in 3% |
+| DQN on the GPU, convolutional network (100,000 games) | 17,485 points; 1024 in 73%, 2048 in 36%, 4096 in 1.3% |
+
+Win probabilities on 2x3 are exact and averaged over the seeds; scores on 4x4 are means over 1,000 games (10,000 for the rules) and over the seeds (three, two for the convolutional network).
 
 Exact DP solves boards up to 3x3 (4.8 million states); the 4x4 game has up to $`11^{16}\approx4.6\cdot10^{16}`$ states. On the small boards the corner rule is far from optimal (0.07% against 93.9% on 2x3/64, 43% against 100% on 3x3/64): on a cramped board what matters is whether a merge survives the next random tile, not where the largest tile sits. Luck matters too: with only 2s the 2x3 game is always won, and at $`p_4=0.5`$ even the optimal player wins only 72.7%.
 
@@ -257,9 +267,11 @@ python test_2048.py             # about one minute: rules, DP, engines, learning
 | `shaping2048.py` | The rules-of-thumb ("naive") reward: a bonus for each new largest tile, the growth of the tile sum, the change of free cells; usable as a reward name wherever `'win'`/`'score'` are |
 | `rl2048.py` | Tabular control agents on `Env2048`: MC control, Sarsa, Q-learning, Expected Sarsa, n-step Sarsa, Sarsa on afterstates; `ExactEvaluator` computes the exact value of a learned policy with the DP |
 | `dqn2048.py` | Final test: DQN as in the PyTorch tutorial (replay memory, target network, Huber loss, AdamW), with legal-move masking; needs PyTorch |
+| `dqn_gpu2048.py` | The same agent on the GPU with 1,024 games at once (rules in the numba engine), a replay memory of a million moves, the perceptron or a convolutional network (`PairCNN`); needs PyTorch with CUDA |
 | `ntuple2048.py` | Not part of the report: a re-implementation of the n-tuple players of the literature (semi-gradient Sarsa on afterstates with binary n-tuple features), kept for exploration and used by the 4x4 policy viewer |
 | `viz2048.py` | Animations of the policies playing (`python viz2048.py -h`) |
-| `viewer/` | Policy viewer: open `viewer/index.html` in a browser and watch the best policy of every method play, on the 2x3 board with the exact optimal win probability of every position and move (data written by `experiments/export_viewer.py`) |
+| `viewer/` | Policy viewer, online at https://edoardocaproni.github.io/2048/ or opened locally (`viewer/index.html`): the best policy of every method plays. On the 2x3 board every policy is a table over the decision states, shown with the exact optimal win probability of every position and move; on the 4x4 board the page computes the moves of the rules of thumb, of the three DQNs of the final test (the convolutional network with its weights in half precision) and of an n-tuple player that is not part of the report. Data written by `experiments/export_viewer.py`; the page loads the 4x4 agents (8 MB) only when that board is chosen |
+| `.github/workflows/pages.yml` | Publishes `viewer/` as the GitHub page at every push to `main` that changes it. One-time setup by the owner of the repository: Settings > Pages > Build and deployment > Source: GitHub Actions |
 | `2048_DP.ipynb` | Notebook of Part 1 |
 
 ### Reproducing the results
@@ -279,9 +291,11 @@ python experiments/plot_tabular.py
 python experiments/exp_tabular_grid.py      # alpha x epsilon grid and decaying schedules (130 runs)
 python experiments/plot_schedule.py
 python experiments/eval_4x4.py              # the rules of thumb on the 4x4 board (and any n-tuple checkpoints present)
-python experiments/exp_dqn.py               # DQN final test: 3 seeds on 2x3 and on 4x4, in parallel (about 1 h)
-python experiments/plot_dqn.py
-python experiments/export_viewer.py         # retrains the best policy of every method and writes viewer/data_*.js (a few minutes)
+python experiments/exp_dqn.py               # DQN final test, tutorial's schedule: 3 seeds on 2x3 and on 4x4, on the CPU (about 1 h)
+python experiments/exp_dqn_gpu.py           # DQN on the GPU, perceptron: 3 seeds on 2x3 and on 4x4 (about 20 min)
+python experiments/exp_dqn_gpu.py 4x4 net=cnn games=100000 eval_every=5000 seeds=0,1   # convolutional network (about 1.5 h)
+python experiments/plot_dqn_gpu.py
+python experiments/export_viewer.py         # data of the viewer: retrains the best tabular policies, exports the DQN networks (a few minutes; the 4x4 n-tuple player trains for about 1 h the first time)
 ```
 
 Not part of the report (exploration of the n-tuple players of the literature):
