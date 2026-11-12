@@ -1,7 +1,9 @@
 # 2048 as a Markov decision problem
 
 Project work for *Dynamic Programming and Reinforcement Learning* (University of Siena, A.Y. 2024/25), by Edoardo Caproni and Tommaso Quintabà.
-The full report is [`report/report.pdf`](report/report.pdf). In the [policy viewer](https://edoardocaproni.github.io/2048/) the best policy found by every method plays in the browser: on the 2x3 board with the exact optimal win probability of every position and move, on the original 4x4 game with the deep Q-networks of the final test computed in the page.
+The full report is [`report/report.pdf`](report/report.pdf).
+
+**▶ Watch the agents play in the browser: [edoardocaproni.github.io/2048](https://edoardocaproni.github.io/2048/).** In this policy viewer the best policy found by every method plays: on the 2x3 board with the exact optimal win probability of every position and move, on the original 4x4 game with the deep Q-networks of the final test computed in the page.
 
 2048 is a puzzle for one player. Every move has two steps: the player slides all the tiles in one direction (deterministic), then a new tile appears in a random empty cell (random). The rules, including the probabilities of the new tile, are completely known, so the game is a Markov decision problem with a known model. Small versions of the game can be solved exactly by dynamic programming; the original 4x4 game cannot, because it has far too many states. The project is built around this gap:
 
