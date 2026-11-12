@@ -124,6 +124,45 @@ def test_score_objective():
     assert abs(mean - best) < 4 * (var / len(res)) ** 0.5
 
 
+def test_shaped_rewards():
+    """The free-cell term adds up to -free(x) over any game: it shifts every
+    value by a constant per state and leaves the optimal policy unchanged."""
+    from shaping2048 import reward_fn
+    g = Game2048(2, 3, target=32)
+    V0, table0, layers = dp.solve_optimal(g, 'naive_nofree')
+    V1, table1, _ = dp.solve_optimal(g, 'naive', layers)
+    assert table0 == table1
+    for board, v in V0.items():
+        assert abs(V1[board] - (v - board.count(0))) < 1e-9
+    # the environment pays the same reward as the DP, and the free-cell
+    # term of a whole episode is -free(initial board)
+    env = Env2048(g, reward='free', seed=2)
+    r = reward_fn('naive', g.p4)
+    rng = random.Random(0)
+    for _ in range(20):
+        board, _ = env.reset()
+        start_free, total, done = board.count(0), 0.0, False
+        while not done:
+            board, reward, done, _, info = env.step(rng.choice(env.legal_actions()))
+            total += reward
+        assert total == -start_free
+    env = Env2048(g, reward='naive', seed=4)
+    board, _ = env.reset()
+    done = False
+    while not done:
+        action = rng.choice(env.legal_actions())
+        after, points = g.afterstate(board, action)
+        expected = r(board, after, points)
+        board, reward, done, _, _ = env.step(action)
+        assert reward == expected
+
+
+def test_score_value_unchanged():
+    g = Game2048(2, 3, target=64)
+    V, _, _ = dp.solve_optimal(g, 'score')
+    assert abs(dp.start_value(g, V) - 480.3) < 0.05
+
+
 def test_env():
     env = Env2048(Game2048(2, 3, target=32), seed=3)
     rng = random.Random(0)

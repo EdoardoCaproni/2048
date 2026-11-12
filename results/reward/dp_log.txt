@@ -1,0 +1,10 @@
+evaluator ready (1 s)
+          win: P(win) 0.9393  P(128) 0.0447  score  466.5  moves 51.64  agree 1.000  (4 s)
+        score: P(win) 0.9387  P(128) 0.0547  score  480.3  moves 52.92  agree 0.979  (5 s)
+        naive: P(win) 0.9387  P(128) 0.0554  score  480.2  moves 52.90  agree 0.964  (6 s)
+ naive_nofree: P(win) 0.9387  P(128) 0.0554  score  480.2  moves 52.90  agree 0.964  (9 s)
+    milestone: P(win) 0.9392  P(128) 0.0568  score  469.9  moves 51.70  agree 0.978  (9 s)
+          sum: P(win) 0.9382  P(128) 0.0519  score  479.9  moves 52.96  agree 0.979  (9 s)
+         free: P(win) 0.0007  P(128) 0.0000  score   94.0  moves 17.53  agree 0.495  (6 s)
+wrote C:\Users\Edoardo\Progetti Università\progetto_2048\results\reward\table_reward_dp.csv
+naive vs naive_nofree: same move on 68340 of 68340 boards, max |V_naive - (V_nofree - free)| = 1.42e-13

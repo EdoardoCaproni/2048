@@ -12,6 +12,8 @@ Objectives
 'win'   : V(x) = maximum probability of creating the target tile from x.
 'score' : V(x) = maximum expected score (sum of the merged tiles) until the
           game is over; the target tile is ignored.
+Any reward named in shaping2048.REWARDS can be used in the same way as
+'score' (stage reward r(x, u), no stop at the target).
 
 Policies are functions policy(board, moves) -> {action: probability}, where
 moves = game.moves(board) is the list of legal (action, afterstate, points).
@@ -21,7 +23,9 @@ import random
 import time
 from collections import defaultdict
 
-OBJECTIVES = ('win', 'score')
+from shaping2048 import REWARDS, reward_fn
+
+OBJECTIVES = ('win', 'score') + tuple(REWARDS)
 # Relative tolerance that detects exact ties between actions (values equal up
 # to floating-point rounding). With a larger tolerance, near-ties count as
 # ties too: on boards where the optimal P(win) is close to 1, the share of
@@ -32,6 +36,13 @@ TIE_TOL = 1e-12
 def _check(objective):
     if objective not in OBJECTIVES:
         raise ValueError(f'objective must be one of {OBJECTIVES}')
+
+
+def _stage_reward(game, objective):
+    """r(board, afterstate, points) of an objective, or None for 'win'
+    (whose only reward is the terminal one, inside afterstate_value)."""
+    _check(objective)
+    return None if objective == 'win' else reward_fn(objective, game.p4)
 
 
 def _is_tie(a, b):
@@ -94,6 +105,7 @@ def solve_optimal(game, objective='win', layers=None):
     table[x] an optimal action (ties broken by the order of ACTIONS).
     """
     layers = _default_layers(game, objective, layers)
+    r = _stage_reward(game, objective)
     V, table = {}, {}
     for sigma in sorted(layers, reverse=True):
         W = {}  # afterstates of the boards of stage sigma have tile sum sigma
@@ -103,7 +115,7 @@ def solve_optimal(game, objective='win', layers=None):
                 w = W.get(after)
                 if w is None:
                     w = W[after] = afterstate_value(game, after, V, objective)
-                q = w + points if objective == 'score' else w
+                q = w if r is None else w + r(board, after, points)
                 if best_action is None or (q > best_value and
                                            not _is_tie(q, best_value)):
                     best_action, best_value = action, q
@@ -117,6 +129,7 @@ def evaluate_policy(game, policy, objective='win', layers=None):
     """Exact value of a fixed policy: the same backward recursion, with the
     policy's choice in place of the maximisation (policy evaluation)."""
     layers = _default_layers(game, objective, layers)
+    r = _stage_reward(game, objective)
     V = {}
     for sigma in sorted(layers, reverse=True):
         W = {}
@@ -129,7 +142,7 @@ def evaluate_policy(game, policy, objective='win', layers=None):
                 w = W.get(after)
                 if w is None:
                     w = W[after] = afterstate_value(game, after, V, objective)
-                value += prob * (w + points if objective == 'score' else w)
+                value += prob * (w if r is None else w + r(board, after, points))
             V[board] = value
     return V
 
@@ -170,6 +183,7 @@ def value_iteration(game, objective='win', layers=None, order='jacobi',
     if order not in ('jacobi', 'backward'):
         raise ValueError("order must be 'jacobi' or 'backward'")
     layers = _default_layers(game, objective, layers)
+    r = _stage_reward(game, objective)
     states = [b for sigma in sorted(layers, reverse=True) for b in layers[sigma]]
     V = dict.fromkeys(states, 0.0)
     table = {}
@@ -184,7 +198,7 @@ def value_iteration(game, objective='win', layers=None, order='jacobi',
                 w = W.get(after)
                 if w is None:
                     w = W[after] = afterstate_value(game, after, V, objective)
-                q = w + points if objective == 'score' else w
+                q = w if r is None else w + r(board, after, points)
                 if best_action is None or (q > best and not _is_tie(q, best)):
                     best_action, best = action, q
             delta = max(delta, abs(best - V[board]))
@@ -203,11 +217,12 @@ def value_iteration(game, objective='win', layers=None, order='jacobi',
 
 def action_values(game, board, V, objective='win'):
     """Q-values {action: value} of the legal moves of a board."""
+    r = _stage_reward(game, objective)
     q = {}
     for action, after, points in game.moves(board):
         q[action] = afterstate_value(game, after, V, objective)
-        if objective == 'score':
-            q[action] += points
+        if r is not None:
+            q[action] += r(board, after, points)
     return q
 
 

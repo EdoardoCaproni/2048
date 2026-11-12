@@ -1,0 +1,7 @@
+        afterstate_sarsa_naive_q0_s3: P(win) 0.7969 score 411.7 (710 s)
+        afterstate_sarsa_naive_q0_s2: P(win) 0.8321 score 424.0 (715 s)
+        afterstate_sarsa_naive_q0_s0: P(win) 0.7814 score 409.7 (719 s)
+        afterstate_sarsa_naive_q0_s4: P(win) 0.7875 score 406.1 (719 s)
+        afterstate_sarsa_naive_q0_s1: P(win) 0.7885 score 404.9 (721 s)
+5 runs in 725 s on 26 processes
+wrote C:\Users\Edoardo\Progetti Università\progetto_2048\results\reward\summary_tabular.csv

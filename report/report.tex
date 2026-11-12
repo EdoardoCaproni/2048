@@ -37,16 +37,24 @@
 \maketitle
 
 \begin{abstract}
-2048 is a single-player sliding-tile puzzle whose rules define a Markov decision problem with a known model. We solve small versions of the game exactly by dynamic programming: the game is a total-cost problem with termination states, value iteration reaches the exact solution after finitely many iterations, and since the sum of the tiles is a clock, ordering the states by it turns value iteration into a single backward recursion. We use the exact solution to measure how far the usual rules of thumb are from optimal play and how much of the outcome is luck. We then drop the knowledge of the model and learn to play from a simulator with the methods of the course, evaluating every learned value function and policy exactly against the dynamic-programming solution, which turns learning curves into exact measurements. In prediction, Monte Carlo beats TD(0) on this long game with a sparse reward, and intermediate $n$-step TD beats both. In control on the $2\times3$ board the corner rule wins 0.07\% of the games, the optimal policy 93.9\%, tabular Q-learning 88\% and Sarsa with the action values written through the afterstates 92\%; on the original $4\times4$ board ($\approx 10^{16}$ states) episodic semi-gradient Sarsa with linear $n$-tuple features reaches the 2048 tile in 93\% of the games and 4096 in 81\% after a million training games, with a mean score thirty times that of the heuristics. A deep Q-network built as in the PyTorch tutorial, the final test, learns the small board faster than any table but, after 10\,000 games of the real game, still scores less than the rules of thumb. We close with what is known about the game itself: whether it can always be won (open; the best lower bound is 0.99969), whether an optimal strategy is known (no; the problem is NP-hard on general boards), and which heuristics are good (search and learned $n$-tuple evaluations, the method of this report).
+2048 is a puzzle for one player whose rules define a Markov decision problem with a known model. We solve small versions of the game exactly by dynamic programming. Because the sum of the tiles grows at every move, it works as a clock: the game is a total-cost problem that every policy finishes in a bounded number of moves, value iteration becomes exact after finitely many iterations, and ordering the states by tile sum turns it into a single backward pass. The exact solution shows how far the usual rules of thumb are from optimal play (on the $2\times3$ board with target 64 the corner rule wins 0.07\% of the games, the optimal policy 93.9\%) and how much of the outcome is luck. We then forget the model and learn from a simulator with the methods of the course, using the exact solution to measure every learned policy without simulation noise. The project started from a reward built on the players' rules of thumb (free cells, a growing tile sum, a bonus for each new largest tile); adding up its parts over a game showed that two of them carry no information about which move is better and the third is a graded win reward, and the exact solution confirmed that it leads to the same play as the game score, which we adopted. In prediction, Monte Carlo beats TD(0) on this long game with a sparse reward, and intermediate $n$-step TD beats both. In control, tabular Q-learning wins up to 88\% of the games and Sarsa with the values written through the afterstates (the board after the move, before the random tile) learns fastest. A deep Q-network built as in the PyTorch tutorial is our final test on the original $4\times4$ board. We close with what is known about the game: whether it can always be won (open; the best lower bound is 0.99969), whether an optimal strategy is known (no; the problem is NP-hard on general boards), and which methods play it best: the published players that learn afterstate values with $n$-tuple features, the same update as our best tabular method at a much larger scale.
 \end{abstract}
 
 \section{Motivation}
 
-2048 (G.~Cirulli, 2014~\cite{cirulli2014}) is a single-player puzzle played on a $4\times4$ grid of numbered tiles. Every move is a deterministic slide of all the tiles followed by the random appearance of a new tile, so the game is a Markov decision problem whose model is completely known. Small versions of the game (fewer cells, a smaller target tile) can be solved exactly by dynamic programming. The original game cannot: its state space is far too large. The project is built on this gap.
+2048 (G.~Cirulli, 2014~\cite{cirulli2014}) is a puzzle for one player on a $4\times4$ grid of numbered tiles. Every move has two steps. First the player slides all the tiles in one direction, which is deterministic. Then a new tile appears in a random empty cell. The rules, including the probabilities of the random tile, are completely known, so the game is a Markov decision problem with a known model: the setting of dynamic programming (DP). The difficulty is size. Small versions of the game (fewer cells, a smaller target tile) can be solved exactly by DP; the original game cannot, because it has far too many states. The whole project is built around this gap.
+
+\paragraph{How the project took shape.} Our first idea for teaching an agent to play was to reward it for what good players try to do: keep cells free, make the sum of the tiles grow, and create ever larger tiles. Before training anything with it, we asked what such a reward really asks for once it is added up over a whole game. The answer changed the plan.
+\begin{itemize}[leftmargin=*]
+\item The sum of the tiles grows by the value of the new random tile, whatever the player does (Proposition~\ref{prop:clock}). A reward for the tile sum only rewards surviving; it cannot say which move is better.
+\item The board is always full when the game is lost, so the changes in the number of free cells add up to the same constant in every game. A reward for free cells cannot change which play is best.
+\item A bonus for every new largest tile adds up to a function of the largest tile reached. It is a graded version of a simpler goal: create the target tile.
+\end{itemize}
+So we stated the goal directly, as the probability of winning (Section~\ref{sec:formulation}), and solved it exactly on small boards. The exact solution then became a measuring instrument. It showed that our first reward, the game score and the win itself lead to almost the same optimal play, and that learning from our first reward is no faster than learning from the score, which the game provides for free (Section~\ref{sec:reward}). This is the path that led to the two parts of the project.
 
 \begin{itemize}[leftmargin=*]
-\item \textbf{DP part.} On small boards, compute the optimal policy exactly and use it to answer questions that are hard to settle by playing: how well can the game be played, how good are the rules of thumb used by human players, and how much of the outcome is luck.
-\item \textbf{RL part.} Remove the knowledge of the model and learn from a simulator, with the methods of the course: prediction and tabular control on a small board, where the exact solutions of the DP part measure the learning algorithms, and semi-gradient Sarsa with a linear approximation on the original $4\times4$ board, where only approximate methods are feasible. A deep Q-network, built as in the PyTorch tutorial, closes the part as a final test.
+\item \textbf{DP part.} On small boards, compute the optimal policy exactly and use it to answer questions that are hard to settle by playing: how well can the game be played, how good are the rules of thumb of human players, and how much of the outcome is luck.
+\item \textbf{RL part.} Forget the model and learn from a simulator, with the methods of the course. On a small board the exact solutions of the DP part measure the learning algorithms precisely. On the original $4\times4$ board no table fits; there, a deep Q-network built as in the PyTorch tutorial is our final test, and Section~\ref{sec:literature} reports what others achieved by carrying our best tabular method to the full board.
 \end{itemize}
 
 \section{The game}
@@ -54,38 +62,42 @@
 The game is played on a board of $R\times C$ cells with a target tile $2^K$. In the original game $R=C=4$, $K=11$ (tile 2048) and $p_4=0.1$.
 
 \begin{enumerate}[leftmargin=*]
-\item A move $u\in\{\act{down},\act{left},\act{right},\act{up}\}$ slides all the tiles as far as possible in that direction. Two tiles with the same value that collide merge into one tile carrying their sum. A tile created by a merge cannot merge again in the same move, and in each line the merges are resolved starting from the side the tiles move to: moving left, $2\,2\,2\,2$ becomes $4\,4$. The score increases by the value of every tile created by a merge.
+\item A move $u\in\{\act{down},\act{left},\act{right},\act{up}\}$ slides all the tiles as far as possible in that direction. Two tiles with the same value that collide merge into one tile carrying their sum. A tile created by a merge cannot merge again in the same move. In each line the merges are resolved starting from the side the tiles move to: moving left, $2\,2\,2\,2$ becomes $4\,4$. The score grows by the value of every tile created by a merge.
 \item A move is legal only if it changes the board.
-\item After every legal move a new tile appears in an empty cell chosen uniformly at random: a 2 with probability $1-p_4$, a 4 with probability $p_4$. The game starts with two such tiles in two distinct cells.
-\item The game is won when a move creates the target tile, and lost when no legal move exists.
+\item After every legal move a new tile appears in an empty cell chosen uniformly at random: a 2 with probability $1-p_4$, a 4 with probability $p_4$. The game starts with two such tiles in two different cells.
+\item The game is won when a move creates the target tile, and lost when no legal move is left.
 \end{enumerate}
 
 \section{Formulation as a Markov decision problem}
+\label{sec:formulation}
 
-\paragraph{State.} A board is encoded by the exponents of its tiles, $x=(x_1,\dots,x_{RC})$ in row-major order, with $x_i=0$ for an empty cell and $x_i=k$ for a tile $2^k$. The state $x_t$ is the board observed before the $t$-th move, that is, after the random tile. The initial state $x_0$ has distribution $p_0$: two tiles in two distinct cells chosen uniformly at random, each a 2 with probability $1-p_4$ or a 4 with probability $p_4$. Since the game ends as soon as the target is created, $x_i\in\{0,\dots,K-1\}$, and the state space $\X$ is the set of boards reachable from $p_0$. Two kinds of terminal situations exist: the win, reached when a move creates $2^K$, and the boards with no legal move (game over).
+We now write the game in the notation of the DP part of the course~\cite{bertsekas2019}: a state $x$, a control $u$, a random disturbance $w$ and the dynamics $x_{t+1}=f(x_t,u_t,w_t)$. Table~\ref{tab:notation} collects the symbols used in the rest of the report.
 
-\paragraph{Control.} The admissible controls are the legal moves,
+\paragraph{State.} A board is stored as the exponents of its tiles, $x=(x_1,\dots,x_{RC})$, cell by cell in row-major order: $x_i=0$ for an empty cell and $x_i=k$ for a tile $2^k$ (so 3 stands for the tile 8). The state $x_t$ is the board the player sees before the $t$-th move, that is, after the random tile. The initial state $x_0$ is random, with distribution $p_0$: two tiles in two different cells chosen uniformly at random, each a 2 with probability $1-p_4$ or a 4 with probability $p_4$. The game stops as soon as the target $2^K$ is created, so before that every cell holds an exponent between $0$ and $K-1$. The state space $\X$ is the set of boards that can be reached from $p_0$. The game ends in one of two ways: a win, when a move creates the tile $2^K$, or a game over, when no legal move is left.
+
+\paragraph{Control.} The admissible controls are the legal moves, the ones that change the board:
 \[
 \U(x)=\bigl\{u\in\{\act{down},\act{left},\act{right},\act{up}\} : M(x,u)\neq x\bigr\},
 \]
-where $M$ is the slide/merge map defined below; the game is over exactly when $\U(x)=\emptyset$.
+where $M$ is the slide-and-merge map defined next. The game is over exactly when $\U(x)$ is empty.
 
-\paragraph{Deterministic part of a move.} $y=M(x,u)$ is the board after the slide/merge and before the new tile, called the \emph{afterstate}. $M$ acts line by line: each row (for \act{left}/\act{right}) or column (for \act{up}/\act{down}), read towards the side of the move, is compacted by removing the empty cells, adjacent equal pairs are merged from the front with each tile used at most once, and the line is padded with empty cells. The points of the move, $r(x,u)$, are the sum of the values of the merged tiles.
+\paragraph{Deterministic part of a move.} $y=M(x,u)$ is the board after the slide and the merges, before the new tile appears. Following \cite[\S6.8]{sutton2018} we call it the \emph{afterstate}: it is the part of the next board that the player controls. $M$ works line by line. Each row (for \act{left} and \act{right}) or column (for \act{up} and \act{down}) is read towards the side of the move; the empty cells are removed, adjacent equal tiles are merged from the front, each tile at most once, and the line is padded with empty cells. The points of the move, $r(x,u)$, are the sum of the values of the tiles created by merges.
 
-\paragraph{Disturbance.} $w_t=(i_t,v_t)$, where $i_t$ is uniform over the set $E(y_t)$ of empty cells of the afterstate $y_t=M(x_t,u_t)$, and $v_t\in\{1,2\}$ is the exponent of the new tile, with $P(v_t=1)=1-p_4$ and $P(v_t=2)=p_4$. Given $y_t$, $w_t$ is independent of the past; its distribution depends on $(x_t,u_t)$ only through $y_t$.
+\paragraph{Disturbance.} The random part of a move is $w_t=(i_t,v_t)$: the cell $i_t$ of the new tile, chosen uniformly among the empty cells $E(y_t)$ of the afterstate $y_t=M(x_t,u_t)$, and its exponent $v_t$, equal to 1 (a 2) with probability $1-p_4$ and 2 (a 4) with probability $p_4$. Given the afterstate, $w_t$ does not depend on anything else that happened before. In other words, the move influences the random tile only through the afterstate.
 
-\paragraph{Dynamics.} Writing $y+v\,e_i$ for the board $y$ with exponent $v$ placed in the empty cell $i$,
+\paragraph{Dynamics.} Writing $y+v\,e_i$ for the board $y$ with the exponent $v$ placed in the empty cell $i$,
 \[
 x_{t+1}=f(x_t,u_t,w_t)=M(x_t,u_t)+v_t\,e_{i_t}.
 \]
+In words: slide, then add the random tile.
 
-\paragraph{Objective.} Maximise the probability of creating the target tile,
+\paragraph{Objective.} We maximise the probability of creating the target tile:
 \[
 V^*(x)=\max_{\pi}\; P^{\pi}\bigl(\text{the target tile is created}\mid x_0=x\bigr).
 \]
-In the cost form used in the course~\cite{bertsekas2019}, this is a problem with no stage cost and a terminal cost equal to 1 for a lost game and 0 for a won game; its optimal cost is $J^*(x)=1-V^*(x)$, the minimum probability of losing. A second objective is studied for comparison: the expected score, with stage reward $r(x_t,u_t)$ and no stop at the target tile.
+In the cost form used in the course~\cite{bertsekas2019}, this is a problem with no cost per stage and a terminal cost of 1 for a lost game and 0 for a won game. Its optimal cost is $J^*(x)=1-V^*(x)$, the smallest possible probability of losing. For comparison we also study a second objective: the expected score, with the points $r(x_t,u_t)$ as reward of each stage and no stop at the target tile.
 
-\paragraph{Bellman equation.} With the afterstate value $W^*$,
+\paragraph{Bellman equation.} It helps to split each move into its two steps and give each step its own value. $V^*(x)$ is the best win probability from the board $x$, before the move. $W^*(y)$ is the best win probability from the afterstate $y$, before the new tile appears. Then
 \begin{align}
 V^*(x) &=
 \begin{cases}
@@ -100,39 +112,69 @@ W^*(y) &=
 \end{cases}
 \label{eq:bellman-w}
 \end{align}
-For the expected score, the maximisation becomes $\max_{u}\bigl[r(x,u)+W(M(x,u))\bigr]$ and the first case of \eqref{eq:bellman-w} disappears.
+In words: \eqref{eq:bellman-v} says that the player picks the move whose afterstate is worth most, and that a board with no legal move is lost. \eqref{eq:bellman-w} says that an afterstate holding the target is a win; otherwise its value is the average over where the new tile lands and whether it is a 2 or a 4. For the expected score the move is chosen by $\max_{u}\bigl[r(x,u)+W(M(x,u))\bigr]$, which adds the points of the move, and the first case of \eqref{eq:bellman-w} disappears because the game goes on past the target.
+
+\begin{table}[ht]
+\centering\small
+\begin{tabular}{>{$}l<{$}l}
+\toprule
+\text{Symbol} & Meaning\\
+\midrule
+R\times C,\ 2^K,\ p_4 & board size, target tile, probability that a new tile is a 4\\
+x,\ x_t & board (state) before a move: the exponents of the tiles, 0 for an empty cell\\
+u,\ \U(x) & move (control) and set of legal moves\\
+y=M(x,u) & afterstate: the board after the slide and merges, before the new tile\\
+r(x,u) & points of the move (sum of the tiles created by merges)\\
+w=(i,v),\ E(y) & new tile (cell, exponent) and set of empty cells of $y$\\
+\sigma(x),\ \X_\sigma & sum of the tiles; the boards with tile sum $\sigma$ (a ``stage'')\\
+V^*(x),\ W^*(y) & optimal value of a board and of an afterstate\\
+Q^*(x,u) & optimal value of a move, $W^*(M(x,u))$, plus $r(x,u)$ for the score\\
+\mu,\ \pi & policy (DP notation and RL notation)\\
+v_\pi,\ q_\pi & value of a state and of a state-action pair under $\pi$ (RL notation)\\
+\alpha,\ \epsilon,\ \gamma & step size, exploration rate, discount ($\gamma=1$ throughout, except DQN)\\
+\bottomrule
+\end{tabular}
+\caption{Notation.}
+\label{tab:notation}
+\end{table}
 
 \section{Structural properties}
 
+One simple fact about the rules makes the exact solution easy: the sum of the tiles works as a clock.
+
 \begin{proposition}[the tile sum is a clock]\label{prop:clock}
-Let $\sigma(x)=\sum_{i:\,x_i>0}2^{x_i}$ be the sum of the tiles. For every board $x$, legal move $u$ and disturbance $w=(i,v)$,
+Let $\sigma(x)=\sum_{i:\,x_i>0}2^{x_i}$ be the sum of the tiles. For every board $x$, legal move $u$ and new tile $w=(i,v)$,
 \[
 \sigma\bigl(M(x,u)\bigr)=\sigma(x),\qquad \sigma\bigl(f(x,u,w)\bigr)=\sigma(x)+2^{v}\in\{\sigma(x)+2,\ \sigma(x)+4\}.
 \]
 \end{proposition}
 \begin{proof}
-Sliding moves tiles without changing their values, and a merge replaces two tiles $2^k$ with one tile $2^{k+1}=2^k+2^k$. The new tile adds $2^v$.
+Sliding moves tiles without changing their values, and a merge replaces two tiles $2^k$ with one tile $2^{k+1}=2^k+2^k$. So the slide keeps the sum, and the new tile adds $2^v$.
 \end{proof}
+
+In words: the move itself never changes the tile sum; only the random tile does, by 2 or 4. The consequences are listed below.
 
 \begin{corollary}\label{cor:dag}
 \begin{enumerate}[label=(\roman*)]
-\item The tile sum strictly increases along every trajectory, so no state is visited twice: the transition graph of the reachable states is acyclic.
-\item Before the target is created every tile is at most $2^{K-1}$, so $\sigma(x_t)\le RC\cdot 2^{K-1}$. Since $\sigma$ grows by at least 2 per move, every game ends within $RC\cdot 2^{K-2}$ moves, whatever the policy. All the policies are proper, and \eqref{eq:bellman-v}--\eqref{eq:bellman-w} has a unique solution.
-\item Let $\X_\sigma=\{x\in\X:\sigma(x)=\sigma\}$. Transitions only go from $\X_\sigma$ to $\X_{\sigma+2}\cup\X_{\sigma+4}$. Hence $V^*$, which value iteration computes in a finite number of iterations (Section~\ref{sec:vi}), is also computed exactly by a single backward recursion over $\sigma$, like the finite-horizon DP algorithm with stage index $\sigma/2$.
+\item The tile sum strictly increases at every move, so no board is visited twice in a game: the graph of the transitions between reachable boards has no cycles.
+\item Before the target is created every tile is at most $2^{K-1}$, so $\sigma(x_t)\le RC\cdot 2^{K-1}$. Since $\sigma$ grows by at least 2 per move, every game ends within $RC\cdot 2^{K-2}$ moves, whatever the policy. Hence every policy is proper (it ends the game for sure), and \eqref{eq:bellman-v}--\eqref{eq:bellman-w} has a unique solution.
+\item Group the boards by tile sum: $\X_\sigma=\{x\in\X:\sigma(x)=\sigma\}$. A move only leads from $\X_\sigma$ to $\X_{\sigma+2}$ or $\X_{\sigma+4}$. So $V^*$ can be computed exactly by a single pass backwards over $\sigma$, as in the finite-horizon DP algorithm with $\sigma/2$ playing the role of the stage. Value iteration also reaches $V^*$ exactly, after finitely many iterations (Section~\ref{sec:vi}).
 \end{enumerate}
 \end{corollary}
 
-\paragraph{Total-cost formulation.} In the terms of the course~\cite{bertsekas2019}, 2048 is an infinite-horizon problem with total cost and two kinds of termination states, the win and the boards without legal moves, made absorbing and cost-free (like the destination of the shortest-path example, with a fictitious self-loop). Corollary~\ref{cor:dag}(ii) gives the two assumptions of the total-cost case: termination states exist (A2) and every policy reaches them from every state (A3), here with probability one and within $RC\cdot2^{K-2}$ moves. The Bellman equation \eqref{eq:bellman-v}--\eqref{eq:bellman-w} therefore has a unique solution, and value iteration converges to it from $V^{(0)}=0$ with no discount.
+\paragraph{Link with the theory of the course.} In the terms of the course~\cite{bertsekas2019}, 2048 is an infinite-horizon problem with total cost and two kinds of termination states: the win and the boards without legal moves. Both are made absorbing and cost-free, like the destination in the shortest-path example (a fictitious self-loop with zero cost). Corollary~\ref{cor:dag}(ii) gives the two assumptions of the total-cost case: termination states exist (A2), and every policy reaches them from every state (A3), here with probability one and within $RC\cdot2^{K-2}$ moves. So the Bellman equation \eqref{eq:bellman-v}--\eqref{eq:bellman-w} has a unique solution, and value iteration converges to it from $V^{(0)}=0$ without any discount.
 
 \begin{remark}[afterstates]
-A move factors into a deterministic, controlled part $x\mapsto y=M(x,u)$ and a random, uncontrolled part $y\mapsto x'$. The expectation over the disturbance can therefore be computed in two steps, as in the slides of the course: first the afterstate $y$ of every move, then the average over the new tile in \eqref{eq:bellman-w}. The same decomposition gives the RL part an exact parametrisation of the action values, $q(x,u)=r(x,u)+V(M(x,u))$ (Section~\ref{sec:tabular}).
+A move splits into a deterministic part that the player controls, $x\mapsto y=M(x,u)$, and a random part that the player does not control, $y\mapsto x'$. This is why the expectation over the new tile can be computed in two steps, as in the slides of the course: first the afterstate of every move, then the average over the new tile in \eqref{eq:bellman-w}. The same split gives the RL part an exact way to write the value of a move, $q(x,u)=r(x,u)+V(M(x,u))$ (Section~\ref{sec:tabular}).
 \end{remark}
 
 \begin{remark}[symmetries]
-Rotations and reflections of the board (8 for a square board, 4 for a rectangular one) map the problem onto itself, with the moves mapped accordingly, so $V^*$ is invariant under them. The DP does not exploit them and uses them as a correctness test; the features of the RL part share their weights among the symmetric images, so that the learned values are invariant too.
+Rotating or reflecting the board (8 ways for a square board, 4 for a rectangular one), and renaming the moves accordingly, gives the same problem. So $V^*$ takes the same value on a board and on its images. The DP does not use this to save work; it uses it as a test of correctness.
 \end{remark}
 
 \section{Exact dynamic programming}
+
+On the small boards we compute the optimal policy exactly. Corollary~\ref{cor:dag}(iii) tells us how: list the reachable boards stage by stage, by increasing tile sum, and then solve the Bellman equation backwards, from the last stage to the first. Algorithm~1 is this procedure.
 
 \begin{algorithm}[h]
 \caption{Exact DP by stages}
@@ -148,18 +190,20 @@ Rotations and reflections of the board (8 for a square board, 4 for a rectangula
 \end{algorithmic}
 \end{algorithm}
 
-Replacing the maximisation with the action chosen by a fixed policy gives the exact value of that policy (policy evaluation), which is used for the benchmark policies and, in the RL part, for the learned policies. Ties are broken in the fixed order \act{down}, \act{left}, \act{right}, \act{up}. The cost is proportional to $\sum_\sigma|\X_\sigma|\cdot|\U|\cdot 2RC$.
+When a board is processed, every board it can lead to has a larger tile sum and already has its final value; this is why one pass is enough. The same procedure also gives the exact value of any fixed policy (policy evaluation): replace the maximisation with the move that the policy chooses. We use this for the rules of thumb below and, in the RL part, for every learned policy. Ties between moves are broken in the fixed order \act{down}, \act{left}, \act{right}, \act{up}. The work is proportional to $\sum_\sigma|\X_\sigma|\cdot|\U|\cdot 2RC$: for every board, every move, and every possible new tile.
 
 \subsection{Value iteration and the backward recursion}
 \label{sec:vi}
 
-Value iteration is the algorithm of the course for the total-cost problem: starting from $V^{(0)}=0$, every iteration applies the Bellman operator to all the states,
+Value iteration is the algorithm of the course for total-cost problems. It starts from $V^{(0)}=0$ and, at every iteration, applies the Bellman equation to all the states at once:
 \[
 V^{(i+1)}(x)=\max_{u\in\U(x)} W^{(i)}\bigl(M(x,u)\bigr),
 \]
-where $W^{(i)}$ is \eqref{eq:bellman-w} with $V^{(i)}$ in place of $V^*$, and stops when $\max_x|V^{(i+1)}(x)-V^{(i)}(x)|\le\delta$. Started from zero, $V^{(i)}(x)$ is the optimal probability of winning within $i$ moves. Since every game ends within a bounded number of moves, the iteration is exact after finitely many steps, at most one per stage, and not only in the limit. Table~\ref{tab:vi} confirms it with $\delta=0$: on every board value iteration stops at a fixed point that coincides with the backward recursion to the last bit, after 46 iterations on the $2\times3$ board with target 64 (55 stages) and after a number of iterations below the number of stages on the other boards. Figure~\ref{fig:vi} shows how: $V^{(i)}$ at the start of the game, the probability of winning within $i$ moves, is zero until $i\approx27$ and reaches $V^*$ at $i\approx35$, the length of the optimal games (32.7 moves on average, Section~\ref{sec:dp-results}); the largest error over the states stays close to 1 for 30 iterations and then falls to zero in 16.
+where $W^{(i)}$ is \eqref{eq:bellman-w} computed with $V^{(i)}$ in place of $V^*$. It stops when $\max_x|V^{(i+1)}(x)-V^{(i)}(x)|\le\delta$. Started from zero, $V^{(i)}(x)$ has a simple meaning: the best probability of winning within $i$ moves. Since every game ends within a bounded number of moves, the iteration becomes exact after finitely many steps (at most one per stage), not only in the limit.
 
-The backward recursion of Algorithm~1 is the same iteration with the states updated in place (Gauss--Seidel) in decreasing tile sum: every update then uses values of later stages that are already final, so the first sweep gives $V^*$ and the second only confirms it (Table~\ref{tab:vi}). It does the work of one iteration instead of 47 on the $2\times3$ board, about 55 times less time; this is why the larger boards of Table~\ref{tab:states} are solved with it.
+Table~\ref{tab:vi} confirms this with $\delta=0$. On every board value iteration stops at a fixed point that coincides with the backward recursion to the last bit: after 46 iterations on the $2\times3$ board with target 64 (55 stages), and after fewer iterations than stages on the other boards. Figure~\ref{fig:vi} shows how it gets there. The value at the start of the game, the probability of winning within $i$ moves, is zero until $i\approx27$ and reaches $V^*$ at $i\approx35$, about the length of an optimal game (32.7 moves on average, Section~\ref{sec:dp-results}). The largest error over the states stays close to 1 for 30 iterations and then falls to zero in 16.
+
+The backward recursion of Algorithm~1 is the same iteration with two changes: the states are updated in place (Gauss--Seidel) and in decreasing tile sum. Each update then uses values of later stages that are already final, so the first sweep gives $V^*$ and the second only confirms it (Table~\ref{tab:vi}). It does the work of one iteration instead of 47 on the $2\times3$ board, about 55 times less time. This is why we solve the larger boards of Table~\ref{tab:states} with it.
 
 \begin{table}[ht]
 \centering\small
@@ -178,28 +222,29 @@ $2\times2$ & score & 662 & 29 & 25 & 0.08 & 0 & 2\\
 $2\times3$ & score & 85\,844 & 125 & 119 & 71.8 & 0 & 2\\
 \bottomrule
 \end{tabular}
-\caption{Value iteration (Jacobi, from $V^{(0)}=0$, stopping at $\max_x|V^{(i+1)}-V^{(i)}|=0$) against the backward recursion: number of iterations including the last, confirming one; largest difference from the backward recursion over all the states; sweeps of the Gauss--Seidel version in decreasing tile sum. The backward recursion takes 0.16~s on the $2\times3$ board with target 64 and 0.51~s with the score objective. For the score objective the game continues past the target, so the target plays no role.}
+\caption{Value iteration (Jacobi, from $V^{(0)}=0$, stopping when $\max_x|V^{(i+1)}-V^{(i)}|=0$) against the backward recursion. Iterations include the last one, which only confirms the fixed point. The difference from the backward recursion is the largest over all the states. Gauss--Seidel sweeps are counted in decreasing tile sum. The backward recursion takes 0.16~s on the $2\times3$ board with target 64 and 0.51~s with the score objective. For the score objective the game goes on past the target, so the target plays no role.}
 \label{tab:vi}
 \end{table}
 
 \begin{figure}[ht]
 \centering
 \fig{fig_dp_vi}
-\caption{Value iteration on the $2\times3$ board, target 64. Left: largest error over the states (it is exactly zero from iteration 46). Right: value at the start of the game, i.e.\ the optimal probability of winning within $i$ moves.}
+\caption{Value iteration on the $2\times3$ board, target 64. Left: largest error over the states (exactly zero from iteration 46). Right: value at the start of the game, that is, the optimal probability of winning within $i$ moves.}
 \label{fig:vi}
 \end{figure}
 
 \subsection{Benchmark policies}
 
+We compare the optimal policy with three simple policies:
 \begin{itemize}[leftmargin=*]
-\item \textbf{Corner rule}: the first legal move in the order \act{down}, \act{left}, \act{right}, \act{up}. It is the classic rule of thumb of keeping the large tiles in one corner and pressing \act{up} only when forced.
+\item \textbf{Corner rule}: the first legal move in the order \act{down}, \act{left}, \act{right}, \act{up}. It is the classic rule of thumb: keep the large tiles in one corner and press \act{up} only when forced.
 \item \textbf{Greedy}: the legal move with the largest immediate score $r(x,u)$, ties broken in the same order.
-\item \textbf{Random}: a uniformly random legal move.
+\item \textbf{Random}: a legal move chosen uniformly at random.
 \end{itemize}
 
 \subsection{Size of the state space}
 
-Table~\ref{tab:states} reports the number of reachable states, together with the naive bound $K^{RC}$ (each cell holds an exponent in $\{0,\dots,K-1\}$). Doubling the target roughly doubles the states. Adding cells is far more expensive: with target 64, the $2\times4$ board has about 30 times the states of the $2\times3$ board, and the $3\times3$ board about 180 times. For the original game the bound is $11^{16}\approx4.6\cdot10^{16}$: exact DP is out of reach, which motivates the RL part. Figure~\ref{fig:stages} shows how the states of the $2\times3$ board are distributed over the stages.
+Table~\ref{tab:states} gives the number of reachable states, together with the simple bound $K^{RC}$ (each cell holds an exponent between $0$ and $K-1$). Doubling the target roughly doubles the number of states. Adding cells costs far more: with target 64, the $2\times4$ board has about 30 times the states of the $2\times3$ board, and the $3\times3$ board about 180 times. For the original game the bound is $11^{16}\approx4.6\cdot10^{16}$. Exact DP is out of reach there, and this is why the RL part is needed. Figure~\ref{fig:stages} shows how the states of the $2\times3$ board are spread over the stages.
 
 \begin{table}[ht]
 \centering
@@ -221,7 +266,7 @@ $3\times3$ & 128 & 17\,244\,751 & 40\,353\,607 & -- & -- & -- & --\\
 $4\times4$ & 2048 & intractable & $\approx 4.6\cdot10^{16}$ & -- & -- & -- & --\\
 \bottomrule
 \end{tabular}
-\caption{Reachable decision states (target not yet created), naive bound, time of the backward recursion in pure Python, and exact win probability of the optimal policy and of two heuristics ($p_4=0.1$). The random policy wins with probability 0.1218, 0.0005, 0.0921, 0.0002, 0.0000, 0.0274, 0.0000 and 0.0921 on the first eight boards.}
+\caption{Reachable decision states (target not yet created), simple bound, time of the backward recursion in pure Python, and exact win probability of the optimal policy and of two rules of thumb ($p_4=0.1$). The random policy wins with probability 0.1218, 0.0005, 0.0921, 0.0002, 0.0000, 0.0274, 0.0000 and 0.0921 on the first eight boards.}
 \label{tab:states}
 \end{table}
 
@@ -243,9 +288,17 @@ $4\times4$ & 2048 & intractable & $\approx 4.6\cdot10^{16}$ & -- & -- & -- & --\
 \subsection{Results on the $2\times3$ board with target 64}
 \label{sec:dp-results}
 
-This board is the reference problem of the project: 27\,022 states in 55 stages, solved in a fraction of a second, with an optimal win probability of 0.9393 that is neither trivially 0 nor 1. All the results below are exact unless stated otherwise.
+This board is the reference problem of the project. It has 27\,022 states in 55 stages, it is solved in a fraction of a second, and its optimal win probability, 0.9393, is neither trivially 0 nor 1. All the results below are exact unless stated otherwise.
 
-\paragraph{The heuristics are hopeless.} The corner rule wins 0.07\% of the games, the greedy rule 0.13\% and random play 0.02\%, against 93.9\% for the optimal policy. On this board the ``keep the big tiles in a corner'' advice is worthless: the optimal policy plays the corner move in only 49.5\% of its decisions (weighted by how often each decision occurs under optimal play). Table~\ref{tab:exceptions} lists the departures from the corner rule that matter most, ranked by expected visits times loss of win probability. The boards tell one story: with six cells, what decides the game is not where the largest tile sits but whether a merge is still available after the next spawn. In the first, fourth and sixth boards the corner move keeps the 32 in place and fills the last free cell with tiles that do not match their neighbours, so that the game continues only if the spawn is a 4 (probability $p_4=0.1$, hence the loss of 0.9); the optimal move merges the same pair in the other direction and leaves a matching pair for the next move. In the second and fifth boards the optimal move takes the largest tile \emph{out} of its corner to line up a cascade ($4+4$, $8+8$, $16+16$, $32+32=64$ in the second board; the two 32s in the same column, an immediate win, in the fifth). In the third board the corner rule postpones a merge of two 8s that is available now. A rigid move order cannot see any of this; the optimal policy is not ``anti-corner'' either, it simply ranks a merge kept in reserve above a tile kept in place.
+\paragraph{The rules of thumb are hopeless.} The corner rule wins 0.07\% of the games, the greedy rule 0.13\% and random play 0.02\%, against 93.9\% for the optimal policy. On this board the advice ``keep the big tiles in a corner'' is worthless. The optimal policy plays the corner move in only 49.5\% of its decisions (counting each decision as often as it occurs under optimal play).
+
+Table~\ref{tab:exceptions} lists the departures from the corner rule that matter most. They are ranked by how often the board is visited times how much win probability the corner move loses. The boards tell one story: with six cells, what decides the game is not where the largest tile sits, but whether a merge is still available after the next random tile.
+\begin{itemize}[leftmargin=*]
+\item In the first, fourth and sixth boards the corner move keeps the 32 in place but fills the last free cell with tiles that match none of their neighbours. The game then continues only if the new tile is a 4, which happens with probability $p_4=0.1$: hence the loss of 0.9. The optimal move merges the same pair in the other direction and leaves a matching pair for the next move.
+\item In the second and fifth boards the optimal move takes the largest tile \emph{out} of its corner to line up a chain of merges ($4+4$, $8+8$, $16+16$, $32+32=64$ in the second board; in the fifth, the two 32s end up in the same column, an immediate win).
+\item In the third board the corner rule postpones a merge of two 8s that is available now.
+\end{itemize}
+A fixed order of moves cannot see any of this. The optimal policy is not ``anti-corner'' either: it simply values a merge kept in reserve more than a tile kept in place.
 
 \begin{table}[ht]
 \centering
@@ -261,13 +314,13 @@ Importance & Board & Corner move & Optimal move & Loss\\
 0.079 & $\begin{smallmatrix}16&4&2\\32&2&2\end{smallmatrix}$ & down & up & 0.86\\
 \bottomrule
 \end{tabular}
-\caption{Most important departures of the optimal policy from the corner rule, $2\times3$ board, target 64. Importance = expected number of visits of the state under the optimal policy times the loss; loss = $V^*(x)-Q^*(x,u_{\mathrm{corner}})$, the win probability given up by the corner move.}
+\caption{The most important departures of the optimal policy from the corner rule, $2\times3$ board, target 64. Loss $=V^*(x)-Q^*(x,u_{\mathrm{corner}})$, the win probability given up by the corner move. Importance = expected number of visits of the board under the optimal policy times the loss.}
 \label{tab:exceptions}
 \end{table}
 
-\paragraph{Monte Carlo validation.} Simulating 20\,000 games with the optimal policy gives a win frequency of $0.9395\pm0.0033$ (95\% confidence), in agreement with the exact value 0.9393. The games last 32.7 moves on average (Figure~\ref{fig:length}).
+\paragraph{Monte Carlo check.} Simulating 20\,000 games with the optimal policy gives a win frequency of $0.9395\pm0.0033$ (95\% confidence), in agreement with the exact value 0.9393. The games last 32.7 moves on average (Figure~\ref{fig:length}).
 
-\paragraph{The role of chance.} Figure~\ref{fig:p4} shows the optimal win probability as a function of $p_4$. With $p_4=0$ (only 2s appear) the game is won with certainty; the 4s are what makes it lose, and at $p_4=0.5$ even the optimal player wins only 72.7\% of the games. On this small board, therefore, luck decides at least 6\% of the games whatever the skill.
+\paragraph{The role of chance.} Figure~\ref{fig:p4} shows the optimal win probability as a function of $p_4$. If only 2s appear ($p_4=0$), the game is won for sure: the 4s are what makes it lose. At $p_4=0.5$ even the optimal player wins only 72.7\% of the games. So on this small board luck decides at least 6\% of the games, however well one plays.
 
 \begin{figure}[ht]
 \centering
@@ -281,37 +334,107 @@ Importance & Board & Corner move & Optimal move & Loss\\
 \caption{Optimal $P(\text{win})$ as a function of $p_4$.}
 \label{fig:p4}
 \end{subfigure}
-\caption{Monte Carlo check and sensitivity to the spawn distribution, $2\times3$ board, target 64.}
+\caption{Monte Carlo check and sensitivity to the random tile, $2\times3$ board, target 64.}
 \end{figure}
 
-\paragraph{Win probability or expected score?} The same recursion with the merge points as stage reward maximises the expected score, which is what the game displays and what most 2048 programs optimise. The maximum expected score is 480.3. The score-optimal policy wins 93.87\% of the games (against 93.93\%) and agrees with the win-optimal move in 97.9\% of the decisions. The two objectives are almost, but not exactly, aligned: the score rewards merging, and merging is what makes room for the target. This observation is used in the RL part, where the score is a much denser reward than the win.
+\paragraph{Win probability or expected score?} The same recursion, with the points of each move as stage reward, maximises the expected score: the number the game displays, and what most 2048 programs optimise. The maximum expected score is 480.3. The score-optimal policy wins 93.87\% of the games (against 93.93\%) and makes the win-optimal move in 97.9\% of the decisions. So the two objectives are almost, but not exactly, aligned: the score rewards merging, and merging is what makes room for the target. The RL part relies on this: the score is a much denser reward than the win (Section~\ref{sec:reward}).
 
 \section{Reinforcement learning}
 \label{sec:rl}
 
 \subsection{Setting}
 
-The agent now interacts only with a simulator of the game, with the interface \texttt{reset}/\texttt{step} of Gymnasium: it observes the board, chooses a legal move, and receives the next board and a reward. It does not know the spawn distribution. Two reward signals are used:
+From now on the agent does not know the model. It only interacts with a simulator of the game, through the \texttt{reset}/\texttt{step} interface of Gymnasium: it observes the board, chooses a legal move, and receives the next board and a reward. It never sees the probabilities of the random tile. By Corollary~\ref{cor:dag}, every episode ends within a bounded number of moves and no state is visited twice in an episode. So the return without discount ($\gamma=1$) is well defined, and first-visit and every-visit Monte Carlo methods coincide.
+
+\paragraph{Exact learning curves.} On the small boards the DP solution is available, so we do not evaluate the learned policies by simulation but exactly. We take the greedy policy of the agent and compute its exact win probability and expected score with policy evaluation (Section~\ref{sec:vi}). We also record two more quantities, both weighted by how often the optimal policy visits each board: the share of decisions in which the agent's greedy move is optimal, and the root mean square error (RMSE) of the learned values against $V^*$. The resulting curves have no Monte Carlo noise: all their ups and downs come from learning itself.
+
+\subsection{Choosing the reward}
+\label{sec:reward}
+
+A learning agent only knows what we want through its reward, so the first design choice is the reward. We describe the path that led to the two rewards used in the rest of the report.
+
+\paragraph{The first idea: reward what good players do.} Experienced players keep cells free, see the sum of the tiles grow, and celebrate every new largest tile. Our first reward paid exactly these three things, as a function of the move $(x,u)$ and its afterstate $y=M(x,u)$:
 \begin{itemize}[leftmargin=*]
-\item \textbf{win}: $+1$ when a move creates the target tile, which ends the episode, and 0 otherwise. The return of an episode is the indicator of a win, so the value of a state is its win probability: $v_\pi=P^\pi(\text{win})$ and $v_*=V^*$ of Section~\ref{sec:dp-results}.
-\item \textbf{score}: the points of each move; play continues past the target and the episode ends at game over. The value is the expected score.
+\item \textbf{milestone}: $2^{\max_i y_i}$ when the move creates a new largest tile ($\max_i y_i>\max_i x_i$), and 0 otherwise. The largest tile never shrinks, so this bonus is paid once for each power of two that becomes the largest tile;
+\item \textbf{tile sum}: $2+2p_4$ per move, the expected growth of the tile sum. The real growth is the value of the new tile; we use its expectation so that the reward depends on the move only, as the DP needs;
+\item \textbf{free cells}: $|E(y)|-|E(x)|-1$, the change in the number of free cells over the whole move (the new tile fills one cell). It equals the number of merges minus one.
 \end{itemize}
-By Corollary~\ref{cor:dag}, every episode ends within a bounded number of moves and no state is visited twice in an episode, so the undiscounted return ($\gamma=1$) is well defined and first-visit and every-visit Monte Carlo methods coincide.
+We call the sum of the three the \emph{naive reward}. It is a legitimate reward: it depends on the move only, so both the DP and the learning methods accept it.
 
-The win reward is sparse: on the $2\times3$ board with target 64, random play wins 2 games in 10\,000, so an agent that explores at random almost never observes a reward. The score reward is dense, and Section~\ref{sec:dp-results} showed that the score-optimal policy is almost win-optimal. The experiments therefore use both: the score reward to learn, and the exact win probability of the learned greedy policy, computed by the DP, to measure.
+\paragraph{What the naive reward really asks for.} A reward is judged by what it adds up to over a whole game, because that sum, the return, is what the agent maximises. Adding up each part gives three facts.
+\begin{enumerate}[label=(\arabic*), leftmargin=*]
+\item \emph{The tile sum only rewards surviving.} By Proposition~\ref{prop:clock} the move never changes the tile sum; only the random tile does. The tile-sum reward is therefore the same for every move: over a game it adds up to $(2+2p_4)$ times the number of moves. It says ``stay alive'', and nothing about which move to make.
+\item \emph{The free cells add up to a constant.} Summing the changes over a game leaves the number of free cells at the end minus the number at the start. A lost game ends on a full board (otherwise a move would be legal), so the sum is $-|E(x_0)|$ in every game, whatever the player does. This part cannot change which play is best: it shifts the value of every board $x$ by exactly $-|E(x)|$.
+\item \emph{The milestones are a graded win reward.} The bonuses of a game add up to about twice the largest tile reached. Paying for the largest tile is a graded version of paying for the target tile, that is, of the win.
+\end{enumerate}
+Facts (1) and (2) are an instance of a principle stated in the course book~\cite[\S3.2]{sutton2018}: the reward should tell the agent \emph{what} we want to achieve, not \emph{how} to achieve it. Free cells and a growing sum are ``how''; reaching the target is the ``what''. Fact (3) points to the ``what'' directly. We therefore wrote the goal as the probability of winning (Section~\ref{sec:formulation}), and measured the naive reward against it.
 
-\paragraph{Exact learning curves.} Because the DP of the small boards is available, the learned policies are not evaluated by simulation but exactly: the greedy policy of the agent is plugged into the backward recursion (policy evaluation) to obtain its win probability and expected score; the learned values are compared with $V^*$ by the root mean square error weighted by the visits of the optimal policy; and the share of decisions (again weighted by the visits of the optimal policy) in which the greedy action is optimal is recorded. The curves have no Monte Carlo noise: all their variability comes from learning.
+\paragraph{The measurement.} The DP of Part~1 accepts any reward that depends on the move, so on the $2\times3$ board we computed the optimal policy of each reward exactly and evaluated it on the true goal (Table~\ref{tab:reward}).
+\begin{itemize}[leftmargin=*]
+\item Fact (2) holds exactly. With and without the free-cell part, the optimal policies choose the same move on all 68\,340 boards, and the values differ by $|E(x)|$ up to rounding ($10^{-13}$). On its own the free-cell reward is worth $-4$ at the start of every game, for every policy: all moves tie, the greedy choice falls back on the fixed order of the moves, which is the corner rule, and wins 0.07\% of the games.
+\item Fact (3) holds too: the policy that maximises the milestones wins 0.9392 of the games, against the best possible 0.9393. It also reaches the tile 128 with probability 0.0568, against the best possible 0.0570 (Table~\ref{tab:states}).
+\item The naive reward is not a bad goal: its optimal policy wins 0.9387 of the games, as often as the score-optimal policy. Even the tile sum alone, which only pays for surviving, leads to good play (0.9382), because on this board surviving requires merging well.
+\end{itemize}
+
+\begin{table}[ht]
+\centering\small
+\begin{tabular}{lccc}
+\toprule
+Reward maximised by the DP & $P(\text{win})$ & Expected score & Optimal decisions\\
+\midrule
+win (the goal)                      & 0.9393 & 466.5 & 100\%\\
+score (points of the merges)        & 0.9387 & 480.3 & 97.9\%\\
+naive (milestone + tile sum + free cells) & 0.9387 & 480.2 & 96.4\%\\
+\quad milestone alone               & 0.9392 & 469.9 & 97.8\%\\
+\quad tile sum alone                & 0.9382 & 479.9 & 97.9\%\\
+\quad free cells alone              & 0.0007 & 94.0 & 49.5\%\\
+\bottomrule
+\end{tabular}
+\caption{The optimal policy of each reward, $2\times3$ board, target 64, evaluated exactly on the true goal: win probability, expected score, and share of decisions (weighted by the visits of the win-optimal policy) in which it makes a win-optimal move. After the target is created, the win-optimal policy continues with the score-optimal policy, which only affects its score.}
+\label{tab:reward}
+\end{table}
+
+\paragraph{Learning with it.} The optimum is not the whole story: a learner also needs a reward that tells it something at most moves. We trained the best tabular method of Section~\ref{sec:tabular}, Sarsa on afterstates, with the naive reward, in the same setting as the other runs (5 seeds, $\alpha=\epsilon=0.1$, zero initial values). Figure~\ref{fig:reward} and Table~\ref{tab:reward-learning} compare it with the same method trained with the score and with the win. The naive reward learns as fast as the score: slightly behind up to about 20\,000 episodes, within the spread of the seeds, and equal afterwards (0.797 against 0.796 after 200\,000 episodes). Both are far faster at the start than the win, which pays only at the end of a won game: after 10\,000 episodes the win reward is at 0.10, the other two above 0.53.
+
+\begin{figure}[ht]
+\centering
+\fig[0.75\textwidth]{fig_reward_learning}
+\caption{Sarsa on afterstates on the $2\times3$ board, target 64, trained with three rewards: exact win probability of the greedy policy (mean over 5 seeds, band = min--max). Dashed: optimal.}
+\label{fig:reward}
+\end{figure}
+
+\begin{table}[ht]
+\centering\small
+\begin{tabular}{lrrrrr}
+\toprule
+Episodes & 2\,000 & 10\,000 & 20\,000 & 50\,000 & 200\,000\\
+\midrule
+naive reward & 0.130 & 0.531 & 0.613 & 0.723 & 0.797\\
+score        & 0.173 & 0.544 & 0.648 & 0.721 & 0.796\\
+win          & 0.001 & 0.099 & 0.422 & 0.702 & 0.799\\
+\bottomrule
+\end{tabular}
+\caption{Exact win probability of the greedy policy of Sarsa on afterstates, mean over 5 seeds, for the three rewards of Figure~\ref{fig:reward}.}
+\label{tab:reward-learning}
+\end{table}
+
+\paragraph{The decision.} The naive reward works, but no better than the score, and the analysis explains why. Of its three parts, two carry no information about which move is better, and the third is a graded win reward. What remains is close to what the score already measures: the score pays for every merge, merging is what keeps the game alive and builds large tiles, and the score-optimal policy makes the win-optimal move in 97.9\% of the decisions (Section~\ref{sec:dp-results}). The score has two further advantages: the game provides it, and it has no weights to tune. So in the rest of the report we use two rewards:
+\begin{itemize}[leftmargin=*]
+\item \textbf{win}: $+1$ when a move creates the target tile, which ends the episode, and 0 otherwise. The return of an episode is 1 for a win and 0 otherwise, so the value of a state is its win probability: $v_\pi=P^\pi(\text{win})$, and $v_*=V^*$ of Part~1. This reward is the goal itself, but it is sparse: on the $2\times3$ board with target 64, random play wins 2 games in 10\,000, so an agent that explores at random almost never sees it.
+\item \textbf{score}: the points of each move; play continues past the target and the episode ends at game over. The value is the expected score. It is dense, and almost aligned with the goal.
+\end{itemize}
+Whatever the reward used for learning, every policy is measured by its exact win probability.
 
 \subsection{Prediction: TD(0), $n$-step TD and Monte Carlo}
 \label{sec:prediction}
 
-Before control, the prediction problem: estimate the value $v_\pi$ of a fixed policy from its episodes alone. The policy is the optimal one of Part~1 and the reward is the win, so $v_\pi=V^*$ is the win probability, known exactly; the study is the one of the random-walk examples of the course~\cite[Example~6.2, \S7.1]{sutton2018}, on a problem with 12\,939 states visited by the policy instead of 5. Three methods with constant step size $\alpha$ and $\gamma=1$ are compared:
+Before learning to play, we study a simpler problem, prediction: estimate the value $v_\pi$ of a \emph{fixed} policy from its episodes alone. We take the optimal policy of Part~1 and the win reward, so $v_\pi=V^*$, the win probability, is known exactly. This repeats the random-walk examples of the course~\cite[Example~6.2, \S7.1]{sutton2018} on a much larger problem: the policy visits 12\,939 states instead of 5. We compare three methods, all with a constant step size $\alpha$ and $\gamma=1$:
 \begin{itemize}[leftmargin=*]
-\item \textbf{TD(0)} (\S6.1): $V(S_t)\leftarrow V(S_t)+\alpha\,[R_{t+1}+V(S_{t+1})-V(S_t)]$;
-\item \textbf{$n$-step TD} (\S7.1), with target $G_{t:t+n}=R_{t+1}+\dots+R_{t+n}+V(S_{t+n})$, for $n=2,4,8,16$;
-\item \textbf{constant-$\alpha$ Monte Carlo} (\S6.1), whose target is the full return: the limit $n\to\infty$ of $n$-step TD.
+\item \textbf{TD(0)} (\S6.1) moves the estimate of a state towards the reward plus the estimate of the next state: $V(S_t)\leftarrow V(S_t)+\alpha\,[R_{t+1}+V(S_{t+1})-V(S_t)]$;
+\item \textbf{$n$-step TD} (\S7.1) looks $n$ steps ahead before using an estimate: its target is $G_{t:t+n}=R_{t+1}+\dots+R_{t+n}+V(S_{t+n})$. We use $n=2,4,8,16$;
+\item \textbf{constant-$\alpha$ Monte Carlo} (\S6.1) uses the full return of the game as target. It is the limit $n\to\infty$ of $n$-step TD.
 \end{itemize}
-All the estimates start from $V_0=0.5$, as in Example~6.2. The error is $\sqrt{\overline{VE}}$ of \S9.2: the root mean square error against $V^*$ weighted by the on-policy distribution of the policy (its expected visits per game, normalised), the same quantity used for the control methods below. Each run simulates 20\,000 games of the optimal policy, all the methods learn from the same games, and the results are averaged over 50 runs. Since no state repeats within a game, the updates of a game can be applied when it ends, in the order of the online algorithm, with the same result.
+All the estimates start from $V_0=0.5$, as in Example~6.2. The error is $\sqrt{\overline{VE}}$ of \S9.2: the RMSE against $V^*$, weighted by how often the policy visits each state, the same weighting used for the control methods below. Each run simulates 20\,000 games of the optimal policy; all the methods learn from the same games; the results are averaged over 50 runs. Since no state repeats within a game, the updates of a game can be applied when it ends, in the order of the online algorithm, with the same result.
 
 \begin{figure}[ht]
 \centering
@@ -321,23 +444,47 @@ All the estimates start from $V_0=0.5$, as in Example~6.2. The error is $\sqrt{\
 \label{fig:prediction}
 \end{figure}
 
-\paragraph{Results.} Figure~\ref{fig:prediction} reverses the ranking of the random walk, where TD(0) beats Monte Carlo. Here Monte Carlo is the fastest at the start and TD(0) the slowest at every budget: averaged over the first 1\,000 games the best TD(0) error is 0.33 against 0.17 for Monte Carlo, over 20\,000 games 0.114 against 0.085. The reason is the length of the games and the sparsity of the reward: the only nonzero reward is the win at the end of a 33-move game, and TD(0) moves its information back by one state per visit, through 12\,939 states that are each visited rarely, whereas the Monte Carlo target carries the outcome to every state of the game at once. With a longer budget the bootstrapping pays off and the intermediate $n$ win, as in Figure~7.2 of the book: over 20\,000 games the best is 8-step TD ($\alpha=0.2$, error 0.080), then 4-step and 16-step (0.082--0.083), Monte Carlo (0.085, $\alpha=0.1$), 2-step (0.095) and TD(0) (0.114, $\alpha=0.6$); with these step sizes the 8-step estimates are also the most accurate at the end (error 0.054 after 20\,000 games, against 0.062 for Monte Carlo and 0.064 for TD(0)). The best step size decreases with $n$, because a longer return is a noisier target, and all methods degrade quickly above $\alpha\approx0.6$. The same trade-off returns in control: the methods that propagate credit further per update learn faster (Section~\ref{sec:tabular}).
+\paragraph{Results.} Figure~\ref{fig:prediction} reverses the ranking of the random walk, where TD(0) beats Monte Carlo. Here Monte Carlo is the fastest at the start, and TD(0) is the slowest at every budget. Averaged over the first 1\,000 games, the best TD(0) error is 0.33 against 0.17 for Monte Carlo; over 20\,000 games, 0.114 against 0.085.
+
+The reason is the length of the games and the sparsity of the reward. The only nonzero reward is the win, at the end of a game of about 33 moves. TD(0) moves this information back by only one state per visit, through 12\,939 states that are each visited rarely. The Monte Carlo target, instead, carries the outcome to every state of the game at once.
+
+With a longer budget, bootstrapping pays off and an intermediate $n$ wins, as in Figure~7.2 of the book. Over 20\,000 games the ranking is:
+
+\begin{center}\small
+\begin{tabular}{lcccccc}
+\toprule
+ & 8-step & 4-step & 16-step & Monte Carlo & 2-step & TD(0)\\
+\midrule
+average error & 0.080 & \multicolumn{2}{c}{0.082--0.083} & 0.085 & 0.095 & 0.114\\
+best $\alpha$ & 0.2 & & & 0.1 & & 0.6\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+With these step sizes the 8-step estimates are also the most accurate at the end: error 0.054 after 20\,000 games, against 0.062 for Monte Carlo and 0.064 for TD(0). The best step size decreases as $n$ grows, because a longer return is a noisier target, and all the methods get worse quickly above $\alpha\approx0.6$. The same trade-off returns in control: the methods that pass information further back at each update learn faster (Section~\ref{sec:tabular}).
 
 \subsection{Tabular control on the $2\times3$ board}
 \label{sec:tabular}
 
-Six control methods of the course~\cite{sutton2018} are implemented, with $\epsilon$-greedy exploration restricted to the legal moves:
+Now the agent must learn to play, not just to predict. We implement six control methods of the course~\cite{sutton2018}. All of them keep a table of values, explore with $\epsilon$-greedy choices among the legal moves, and improve the policy as the values change:
 \begin{itemize}[leftmargin=*]
-\item \textbf{Monte Carlo control} (on-policy, first visit, $\epsilon$-soft; \S5.4), with sample-average updates;
-\item \textbf{Sarsa} (\S6.4), \textbf{Q-learning} (\S6.5) and \textbf{Expected Sarsa} (\S6.6), with constant step size $\alpha$;
-\item \textbf{$n$-step Sarsa} (\S7.2) with $n=3$;
-\item \textbf{Sarsa on afterstates}: Sarsa (\S6.4) with the action values written as $Q(x,u)=r(x,u)+V(M(x,u))$, so that all the pairs $(x,u)$ that lead to the same afterstate share one entry $V(y)$. The parametrisation is exact, because $q_\pi(x,u)=r(x,u)+\E[v_\pi(x')\mid y=M(x,u)]$ depends on $(x,u)$ only through $r(x,u)$ and $y$. The agent needs the slide rule $M$, but not the spawn distribution; the tic-tac-toe player of \cite[\S1.5]{sutton2018} learns the values of the positions reached by its own moves in the same way. Since $R_{t+1}=r(S_t,A_t)$ cancels, the Sarsa error is
-\[
-R_{t+1}+Q(S_{t+1},A_{t+1})-Q(S_t,A_t)=r(S_{t+1},A_{t+1})+V(Y_{t+1})-V(Y_t),\qquad Y_t=M(S_t,A_t),
-\]
-so the update of $Q(S_t,A_t)$ is $V(Y_t)\leftarrow V(Y_t)+\alpha\,[r(S_{t+1},A_{t+1})+V(Y_{t+1})-V(Y_t)]$, with target 0 when $S_{t+1}$ is game over; $A_{t+1}$ is the next move actually chosen, so the method is on-policy. With a linear approximation of $V$ this is the algorithm used on the $4\times4$ board (Section~\ref{sec:ntuple}).
+\item \textbf{Monte Carlo control} (on-policy, first visit, $\epsilon$-soft; \S5.4): learns from the full return of each game, with sample averages;
+\item \textbf{Sarsa} (\S6.4), \textbf{Q-learning} (\S6.5) and \textbf{Expected Sarsa} (\S6.6): one-step TD methods with constant step size $\alpha$. Sarsa uses the next move actually played; Q-learning the best next move; Expected Sarsa the average over the next moves of the $\epsilon$-greedy policy;
+\item \textbf{$n$-step Sarsa} (\S7.2) with $n=3$: Sarsa looking 3 moves ahead;
+\item \textbf{Sarsa on afterstates}: Sarsa with the value of a move written through its afterstate, as described next.
 \end{itemize}
-Every method is run for 200\,000 episodes with $\alpha=0.1$, $\epsilon=0.1$ and 5 seeds, on three settings: score reward; win reward from zero initial values; win reward with optimistic initial values $Q=1$ (\cite[\S2.6]{sutton2018}). The greedy policy is evaluated exactly every 2\,000 episodes. The greedy choice breaks ties in the order \act{down}, \act{left}, \act{right}, \act{up}, so an agent with all-zero values plays the corner rule.
+
+\paragraph{Sarsa on afterstates.} Two different moves from two different boards can lead to the same afterstate $y$; from there, the future is the same. So instead of a table $Q(x,u)$ with one entry per board and move, we keep one value $V(y)$ per afterstate and write
+\[
+Q(x,u)=r(x,u)+V(M(x,u)).
+\]
+This is exact, not an approximation: the true value of a move, $q_\pi(x,u)=r(x,u)+\E[v_\pi(x')\mid y=M(x,u)]$, depends on $(x,u)$ only through the points $r(x,u)$ and the afterstate $y$. The agent needs the slide rule $M$, but not the probabilities of the random tile. The tic-tac-toe player of \cite[\S1.5]{sutton2018} learns in the same way the values of the positions reached by its own moves. With this $Q$, the Sarsa error simplifies, because the reward $R_{t+1}=r(S_t,A_t)$ cancels:
+\[
+R_{t+1}+Q(S_{t+1},A_{t+1})-Q(S_t,A_t)=r(S_{t+1},A_{t+1})+V(Y_{t+1})-V(Y_t),\qquad Y_t=M(S_t,A_t).
+\]
+So the Sarsa update of $Q(S_t,A_t)$ becomes an update of one afterstate value, $V(Y_t)\leftarrow V(Y_t)+\alpha\,[r(S_{t+1},A_{t+1})+V(Y_{t+1})-V(Y_t)]$, with target 0 when $S_{t+1}$ is game over. Here $A_{t+1}$ is the next move actually chosen, so the method is on-policy. The same update with a linear approximation of $V$ is the core of the strongest published 2048 players (Section~\ref{sec:literature}).
+
+\paragraph{Setup.} Every method is run for 200\,000 episodes with $\alpha=0.1$, $\epsilon=0.1$ and 5 seeds, in three settings: score reward; win reward with zero initial values; win reward with optimistic initial values $Q=1$ (\cite[\S2.6]{sutton2018}). The greedy policy is evaluated exactly every 2\,000 episodes. The greedy choice breaks ties in the order \act{down}, \act{left}, \act{right}, \act{up}, so an agent whose values are all zero plays the corner rule.
 
 \begin{figure}[ht]
 \centering
@@ -361,15 +508,21 @@ Every method is run for 200\,000 episodes with $\alpha=0.1$, $\epsilon=0.1$ and 
 \label{fig:tabular}
 \end{figure}
 
-\paragraph{Results.} Figure~\ref{fig:tabular} and Table~\ref{tab:tabular} summarise the 90 runs. Every method learns to play far better than any heuristic from the simulator alone: after 200\,000 episodes the exact win probability of the greedy policies lies between 0.68 and 0.87, against 0.0007 for the corner rule, and the expected score between 275 and 412 against a maximum of 480. None reaches the optimum 0.9393 within the budget: with constant $\alpha=0.1$ and $\epsilon=0.1$ the estimates keep fluctuating and the behaviour policy keeps making exploratory mistakes, which the on-policy methods learn to fear. The ranking is consistent with the theory of the course.
+\paragraph{Results.} Figure~\ref{fig:tabular} and Table~\ref{tab:tabular} summarise the 90 runs. Every method learns from the simulator alone to play far better than any rule of thumb. After 200\,000 episodes the exact win probability of the greedy policies lies between 0.68 and 0.87, against 0.0007 for the corner rule, and the expected score between 275 and 412, against a maximum of 480. None reaches the optimum 0.9393 within the budget. With constant $\alpha=0.1$ and $\epsilon=0.1$ the estimates keep fluctuating, and the exploring policy keeps making random mistakes, which the on-policy methods learn to fear. The ranking agrees with the theory of the course:
 \begin{itemize}[leftmargin=*]
-\item \textbf{Q-learning is the best method on plain tables $Q(x,u)$ in every setting} (0.757, 0.816, 0.875), because it is off-policy: its target $\max_a Q(x',a)$ estimates $q_*$ whatever the exploration, whereas Sarsa and Expected Sarsa estimate the value of the $\epsilon$-greedy policy, which is lower. The error of the values against $V^*$ makes this visible: with the win reward and optimistic initialisation, the weighted RMSE of Q-learning is 0.021, that of Sarsa 0.158 and of Expected Sarsa 0.148 (Figure~\ref{fig:tabular}d), although their greedy policies are not far apart. Expected Sarsa beats Sarsa in every setting (lower variance of the target), and 3-step Sarsa beats both in two of three.
-\item \textbf{Sarsa on afterstates is the best or second best everywhere} (0.796, 0.799, 0.848) and learns fastest (Figure~\ref{fig:tabular}a--c) with the fewest parameters: one value per afterstate instead of four per state, 10\,478 entries against 12\,464 states seen by Q-learning with the score reward. The shared entries are what make it fast: every update of $V(y)$ improves the action value of all the pairs $(x,u)$ that lead to $y$. It beats plain Sarsa, the same on-policy algorithm on a plain table, by 0.05--0.12 in every setting: the gain comes from the parametrisation alone.
-\item \textbf{Monte Carlo control learns fast at first and then slowly}: it leads during the first 20\,000 episodes with the score reward, but ends last or second to last, because it does not bootstrap and the returns of 30-move episodes are noisy.
-\item \textbf{The sparse win reward is slower but not hopeless.} From zero initial values the agents play the corner rule at first (the tie-break of the greedy choice), win nothing for about 10\,000 episodes, and then take off once the $\epsilon$-greedy exploration has stumbled on a few wins whose value propagates backwards (Figure~\ref{fig:tabular}b). Optimistic initial values ($Q_0=1$) remove the dead start and leave no state unvisited (the share of the optimal policy's visits to unseen boards drops from 15--20\% to 0), and they give the best final results for Q-learning and Sarsa on afterstates. The two other on-policy Sarsa methods gain less: under optimism the exploring behaviour is more erratic, and that is what they evaluate.
-\item \textbf{The score reward is a good surrogate}: the greedy policies learned from the score win 71--80\% of the games although they never observed a win signal, in line with the 97.9\% agreement of the two optimal policies measured in Section~\ref{sec:dp-results}.
+\item \textbf{Q-learning is the best method on plain tables $Q(x,u)$ in every setting} (0.757, 0.816, 0.875). The reason is that it is off-policy: its target $\max_a Q(x',a)$ estimates the optimal values $q_*$ whatever the exploration, while Sarsa and Expected Sarsa estimate the value of the $\epsilon$-greedy policy, which is lower. The error of the values against $V^*$ shows this clearly. With the win reward and optimistic initialisation, the weighted RMSE is 0.021 for Q-learning, 0.158 for Sarsa and 0.148 for Expected Sarsa (Figure~\ref{fig:tabular}d), although their greedy policies are not far apart. Expected Sarsa beats Sarsa in every setting (its target varies less), and 3-step Sarsa beats both in two settings out of three.
+\item \textbf{Sarsa on afterstates is the best or second best everywhere} (0.796, 0.799, 0.848). It also learns fastest (Figure~\ref{fig:tabular}a--c), with the fewest entries: one value per afterstate instead of four per board, 10\,478 entries against 12\,464 boards seen by Q-learning with the score reward. The shared entries are what make it fast: every update of $V(y)$ improves the value of all the moves, from all the boards, that lead to $y$. It beats plain Sarsa, the same on-policy algorithm on a plain table, by 0.05--0.12 in every setting, so the gain comes from the way the values are written, not from the algorithm.
+\item \textbf{Monte Carlo control learns fast at first, then slowly.} It leads during the first 20\,000 episodes with the score reward, but ends last or second to last. It does not bootstrap, and the returns of 30-move episodes are noisy.
+\item \textbf{The sparse win reward is slower, but not hopeless.} From zero initial values the agents first play the corner rule (the tie-break of the greedy choice). They win nothing for about 10\,000 episodes, then take off once $\epsilon$-greedy exploration has stumbled on a few wins whose value spreads backwards (Figure~\ref{fig:tabular}b). Optimistic initial values ($Q_0=1$) remove this dead start, because every move looks promising until it has been tried. They also leave no state unvisited: the share of the optimal policy's visits to boards the agent has never seen drops from 15--20\% to 0. With optimism, Q-learning and Sarsa on afterstates reach their best results. The two other on-policy Sarsa methods gain less: under optimism the exploring behaviour is more erratic, and that is the behaviour they evaluate.
+\item \textbf{The score is a good stand-in for the win.} The greedy policies learned from the score win 71--80\% of the games, although they never saw a win signal, in line with Section~\ref{sec:reward}.
 \end{itemize}
-\paragraph{Step size and exploration.} Figure~\ref{fig:grid} shows the exact win probability after 200\,000 episodes of Q-learning and Expected Sarsa with the score reward over a grid of constant $\alpha$ and $\epsilon$. Within this budget the larger step sizes win ($\alpha=0.2$--$0.4$ give 0.80--0.83 against 0.75 for $\alpha=0.1$ and 0.3--0.5 for $\alpha=0.02$): the estimates are noisier but they reach useful values on the 12\,000 visited states much sooner, and the greedy policy is evaluated, not the noisy $Q$. Exploration has an optimum in the middle ($\epsilon=0.05$--$0.2$): too little and the agent locks on the first good moves, too much and the behaviour policy loses games that the on-policy methods then learn to avoid in the wrong way. Replacing the constants by decaying schedules ($\epsilon$ from 0.3 to 0.01 and $\alpha$ from 0.2 to 0.02, linearly over the run) does not help the one-step action-value methods within this budget (Figure~\ref{fig:schedule}): Q-learning ends at 0.72 instead of 0.76, Sarsa and Expected Sarsa at 0.70, because the heavy early exploration wastes episodes on positions the greedy policy never visits, and the late small step sizes freeze the estimates before they are accurate. The methods that propagate credit further per episode do profit: 3-step Sarsa rises from 0.71 to 0.76 and Sarsa on afterstates from 0.80 to 0.85, with an exact expected score of 430 out of 480. The lesson is the one of the course: the schedules that guarantee convergence in the limit (decreasing $\alpha$, GLIE exploration) are not the fastest for a fixed budget, and the right choice depends on how far each update reaches.
+
+\paragraph{Step size and exploration.} Figure~\ref{fig:grid} shows the exact win probability after 200\,000 episodes of Q-learning and Expected Sarsa, with the score reward, over a grid of constant $\alpha$ and $\epsilon$. Two patterns stand out.
+\begin{itemize}[leftmargin=*]
+\item \emph{Within this budget, larger step sizes win}: $\alpha=0.2$--$0.4$ gives 0.80--0.83, against 0.75 for $\alpha=0.1$ and 0.3--0.5 for $\alpha=0.02$. The estimates are noisier, but they reach useful values on the 12\,000 visited states much sooner, and we evaluate the greedy policy, not the noisy $Q$.
+\item \emph{Exploration has an optimum in the middle} ($\epsilon=0.05$--$0.2$). With too little, the agent locks onto the first good moves it finds. With too much, the exploring policy loses games, and the on-policy methods learn to avoid the wrong things.
+\end{itemize}
+Replacing the constants with decaying schedules ($\epsilon$ from 0.3 to 0.01 and $\alpha$ from 0.2 to 0.02, linearly over the run) does not help the one-step methods within this budget (Figure~\ref{fig:schedule}). Q-learning ends at 0.72 instead of 0.76, Sarsa and Expected Sarsa at 0.70. The heavy early exploration wastes episodes on positions the greedy policy never visits, and the late small step sizes freeze the estimates before they are accurate. The methods that pass information further back in each episode do gain: 3-step Sarsa rises from 0.71 to 0.76, and Sarsa on afterstates from 0.80 to 0.85, with an exact expected score of 430 out of 480. The schedules that guarantee convergence in the limit (decreasing $\alpha$, GLIE exploration) are not the fastest for a fixed budget; the right choice depends on how far each update reaches.
 
 \begin{figure}[ht]
 \centering
@@ -403,148 +556,14 @@ Sarsa on afterstates & 0.796 & 412 & 0.63 & 0.799 & 0.60 & 0.62 & 0.848 & 0.71 &
 optimal (DP)      & 0.939 & 480 & 1 & 0.939 & 1 & 0 & 0.939 & 1 & 0\\
 \bottomrule
 \end{tabular}
-\caption{Tabular methods on the $2\times3$ board, target 64, after 200\,000 episodes ($\alpha=0.1$, $\epsilon=0.1$, mean over 5 seeds; the standard deviation over seeds is at most 0.025). Exact win probability and expected score of the greedy policy, share of the optimal policy's decisions in which the greedy action is optimal, and weighted RMSE of the learned state values against $V^*$ (win objective).}
+\caption{Tabular methods on the $2\times3$ board, target 64, after 200\,000 episodes ($\alpha=0.1$, $\epsilon=0.1$, mean over 5 seeds; the standard deviation over seeds is at most 0.025). $P(\text{win})$ and score: exact win probability and expected score of the greedy policy. Agree: share of the optimal policy's decisions in which the greedy move is optimal. RMSE: weighted error of the learned state values against $V^*$ (win objective).}
 \label{tab:tabular}
 \end{table}
 
-\subsection{Function approximation: semi-gradient Sarsa with $n$-tuple features}
-\label{sec:ntuple}
-
-On the $4\times4$ board tabular methods are not feasible. The control method of the course with function approximation is episodic semi-gradient Sarsa~\cite[\S10.1]{sutton2018}, the Sarsa update applied to a parametrised action value $\hat q(x,u;\mathbf w)$:
-\[
-\mathbf w\leftarrow\mathbf w+\alpha\bigl[R_{t+1}+\hat q(S_{t+1},A_{t+1};\mathbf w)-\hat q(S_t,A_t;\mathbf w)\bigr]\nabla\hat q(S_t,A_t;\mathbf w).
-\]
-The action values are parametrised as in the tabular Sarsa on afterstates, with a linear approximation of $V$:
-\[
-\hat q(x,u;\mathbf w)=r(x,u)+\hat V\bigl(M(x,u);\mathbf w\bigr),\qquad
-\hat V(y;\mathbf w)=\mathbf w^\top\boldsymbol\phi(y)=\sum_{m=1}^{M} w_{m}\bigl[\,\phi_m(y)\,\bigr],
-\]
-where every feature $m$ is a tuple of $n$ cells of the board, $\phi_m(y)\in\{0,\dots,15\}^n$ is the pattern of exponents found in those cells, and $w_m$ is a lookup table with $16^n$ entries: the binary feature vector $\boldsymbol\phi(y)$ has exactly one active entry in every table, like $M$ overlapping state aggregations (\cite[\S9.3]{sutton2018}). These features are the \emph{$n$-tuple networks} of Szubert and Ja\'skowski~\cite{szubert2014}. The gradient of $\hat q(S_t,A_t;\mathbf w)$ is $\boldsymbol\phi(Y_t)$, with $Y_t=M(S_t,A_t)$, and $R_{t+1}=r(S_t,A_t)$ cancels as in the tabular case, so the update adds the error, divided by $M$, to the $M$ active weights:
-\[
-w_m[\phi_m(Y_t)] \leftarrow w_m[\phi_m(Y_t)] + \frac{\alpha}{M}\bigl[r(S_{t+1},A_{t+1})+\hat V(Y_{t+1})-\hat V(Y_t)\bigr],\qquad m=1,\dots,M,
-\]
-with target 0 when $S_{t+1}$ is game over. The step size of the weights is $\alpha/M$, so that $\alpha$ is the step of $\hat V$ whatever the number of features. The moves are chosen greedily with respect to $\hat q$ ($\epsilon=0$, so that Sarsa, Q-learning and Expected Sarsa coincide): the random tile is the only source of exploration, as in the Mountain Car example of \cite[\S10.1]{sutton2018}, where the exploration came from the initial values. With \emph{symmetric weight sharing}, every tuple is read in all the images of the board under its 8 symmetries (4 on a rectangular board), all sharing the same table, so that $\hat V$ is invariant under the symmetries, like $V^*$: this is a choice of features, not a change of algorithm.
-
-Two tuple sets are used: \textbf{rows, columns and $2\times2$ squares} ($n=4$; on the $4\times4$ board 5 tables of $16^4$ entries after merging the symmetric ones, 327\,680 weights, 40 active features), the architecture of \cite{szubert2014}; and \textbf{$2\times3$ rectangles} ($n=6$; 2 tables of $16^6$ entries, 33.5 million weights, 16 active features), closer to the networks of \cite{yeh2017,jaskowski2018}. On the small boards the tuple set \textbf{full board} (one table indexed by the whole afterstate) is the tabular Sarsa on afterstates of Section~\ref{sec:tabular} written as a network, and serves as a sanity check.
-
-\subsubsection{Validation on the small boards}
-
-Before the real game, the algorithm is run on the three small boards where the exact solution is known, so that the learned values and the learned policy can be compared with $V^*$ and $\pi^*$ exactly, as in Section~\ref{sec:tabular}. Every configuration is trained for 300\,000 games with $\alpha=0.1$ (3 seeds on $2\times3$, 2 on $2\times4$, 1 on $3\times3$) and the checkpoints are evaluated with the exact DP: win probability of the greedy policy, share of the optimal policy's decisions in which the greedy action is optimal, and weighted RMSE of $\max_u[r+\hat V(M(x,u))]$ against $V^*$ under the optimal occupancy (win objective only; the score-objective DP is available on $2\times3$ only). Figure~\ref{fig:ntsmall} and Table~\ref{tab:ntsmall} summarise the runs.
-
-\begin{figure}[ht]
-\centering
-\fig[0.49\textwidth]{fig_nt_2x3_64_pwin}\hfill
-\fig[0.49\textwidth]{fig_nt_2x3_64_rmse}\\[1ex]
-\fig[0.49\textwidth]{fig_nt_2x4_128_pwin}\hfill
-\fig[0.49\textwidth]{fig_nt_3x3_64_pwin}
-\caption{$n$-tuple networks on the small boards (mean over seeds, band = min--max). Top: $2\times3$ board, target 64, exact win probability of the greedy policy and weighted RMSE of the learned values against $V^*$ (for the score reward the values are scores, in the range 0--480). Bottom: $2\times4$ board, target 128, and $3\times3$ board, target 64. Dashed: optimal; dotted: corner rule.}
-\label{fig:ntsmall}
-\end{figure}
-
-\begin{table}[ht]
-\centering\small
-\begin{tabular}{llllcccc}
-\toprule
-Board & Tuples & Sym. & Reward & $\hat V_0$ & $P(\text{win})$ & agree & RMSE\\
-\midrule
-$2\times3$/64 & full board (tabular) & -- & win & 1 & \textbf{0.923} & 0.85 & 0.016\\
-              & full board (tabular) & -- & win & 0 & 0.042 & 0.51 & 0.90\\
-              & rows, cols, squares & yes & win & 1 & 0.845 & 0.80 & 0.10\\
-              & rows, cols, squares & no & win & 1 & 0.839 & 0.71 & 0.22\\
-              & rows, cols, squares & yes & score & 0 & 0.826 & 0.77 & --\\
-              & full board (tabular) & -- & score & 0 & 0.007 & 0.52 & --\\
-              & full board, $\epsilon=0.05$ & -- & score & 0 & 0.812 & 0.62 & --\\
-              & full board (tabular) & -- & score & 480 & 0.856 & 0.73 & --\\
-              & \multicolumn{4}{l}{optimal / corner rule} & 0.939 / 0.001\\
-\midrule
-$2\times4$/128 & rows, cols, squares & yes & win & 0 & 0.860 & 0.62 & 0.12\\
-               & rows, cols, squares & yes & win & 1 & 0.852 & 0.63 & 0.11\\
-               & rows, cols, squares & no & win & 0 & \textbf{0.870} & 0.45 & 0.44\\
-               & $2\times3$ rectangles & yes & win & 0 & 0.833 & 0.58 & 0.19\\
-               & rows, cols, squares & yes & score & 0 & 0.828 & 0.61 & --\\
-               & $2\times3$ rectangles & yes & score & 0 & 0.867 & 0.60 & --\\
-               & \multicolumn{4}{l}{optimal / corner rule} & 0.997 / 0.004\\
-\midrule
-$3\times3$/64 & rows, cols, squares & yes & win & 0 & 0.986 & 0.89 & 0.08\\
-              & rows, cols, squares & no & win & 0 & 0.995 & 0.92 & 0.10\\
-              & $2\times3$ rectangles & yes & win & 0 & 0.982 & 0.90 & 0.35\\
-              & rows, cols, squares & yes & score & 0 & 0.982 & 0.93 & --\\
-              & $2\times3$ rectangles & yes & score & 0 & \textbf{0.998} & 0.93 & --\\
-              & \multicolumn{4}{l}{optimal / corner rule} & 1.000 / 0.434\\
-\bottomrule
-\end{tabular}
-\caption{$n$-tuple networks on the small boards after 300\,000 training games ($\alpha=0.1$, greedy play unless stated): exact win probability of the greedy policy, share of optimal decisions, weighted RMSE of the values against $V^*$ (win reward only). $\hat V_0$ is the initial value of every afterstate.}
-\label{tab:ntsmall}
-\end{table}
-
-\begin{itemize}[leftmargin=*]
-\item \textbf{The tabular network converges, but only with exploration.} On $2\times3$ the full-board table with the win reward and optimistic initial values ($\hat V_0=1$) reaches a win probability of 0.923 against the optimum 0.939, with the values within 0.016 RMSE of $V^*$ and still improving at 300\,000 games: this is the tabular Sarsa on afterstates of Table~\ref{tab:tabular} with a different exploration mechanism, and it gets closer to the optimum because optimism explores every move once and then follows the best, instead of wasting a fixed share $\epsilon$ of the moves forever. With $\hat V_0=0$ the same learner wins 0.7\% of the games with the score reward and 4\% with the win reward: a greedy learner that starts from zero locks on the first moves that ever gave a reward (the corner rule wins one game in 1\,500 on this board), and the random tiles alone do not provide enough exploration to leave them. Either optimism ($\hat V_0=480$, the optimal score: 0.856) or $\epsilon$-greedy play (0.812) repairs it; the latter learns the values of the $\epsilon$-greedy policy, not of the greedy one, which shows in its RMSE (226 points against 33 for the optimistic learner).
-\item \textbf{Approximation error.} With the rows, columns and squares of the $2\times3$ board (two 3-cell rows, three 2-cell columns and two $2\times2$ squares: 4 tables after symmetry merging, 14 active features), the learner rises faster than the table (0.80 against 0.22 after 3\,000 games, because every update is shared by all the afterstates with the same rows and columns) but plateaus at 0.83--0.85, a loss of 0.09 in win probability that no amount of training recovers: the exact measure of what these features cannot represent on this board. The score reward gives the same plateau (0.826), consistent with the 98\% agreement of the two objectives found in Part~1.
-\item \textbf{Harder boards, no optimism needed.} On $2\times4$/128 the corner rule wins 0.4\% of the games and on $3\times3$/64 43\%; the zero-initialised greedy learner climbs from there to 0.86 and to 0.99 respectively. Features that generalise are what the tabular learner lacked: the rare early wins update every afterstate that shares a row, a column or a square with the winning line, and after 10\,000 games the $2\times4$ agent already wins 60--70\% of the games (optimism, $\hat V_0=1$, only speeds this up: 0.84 at 10\,000 games). The 6-cell rectangles, with $16^6$ entries per table, start much slower (0.13 after 10\,000 games on $2\times4$) and are still rising at 300\,000 games, where they are the best configuration with the score reward on both boards (0.867 and 0.998): more capacity, more games needed, the trade-off that the $4\times4$ experiment confirms on a larger scale. The remaining gap to the optimum on $2\times4$/128 (0.87 against 0.997) is of the same order as the plateau on $2\times3$.
-\item \textbf{Symmetric weight sharing} improves the values much more than the policy. On $2\times4$/128 it cuts the RMSE from 0.44 to 0.12 and raises the share of optimal decisions from 0.45 to 0.62, but the win probability of the two greedy policies is the same (0.870 and 0.860): a network without weight sharing only learns the orientations that its own play produces, and its values on the mirror images, which the optimal occupancy visits and the RMSE counts, are wrong, but its own policy never needs them. Weight sharing pays off as a four-fold reduction of the number of weights to learn, with the same accuracy, which is what matters on the $4\times4$ board.
-\end{itemize}
-
-\subsubsection{The original $4\times4$ game}
-
-The two networks are trained with the score reward on the original game ($4\times4$, $p_4=0.1$) for 300\,000 games, with $\alpha\in\{0.05,0.1,0.25,0.5\}$ for the 4-tuples and $\alpha\in\{0.1,0.25,0.5\}$ for the 6-tuples, two seeds each (14 runs, about one hour each on one core with the bitboard engine of the appendix). Every checkpoint is evaluated with learning switched off on 1\,000 games with a fixed seed; the three heuristics are evaluated on 10\,000 games with the same engine. Here ``2048 reached'' means that the tile appeared during the game, which continues until no move is left.
-
-\begin{figure}[ht]
-\centering
-\begin{subfigure}[b]{0.48\textwidth}
-\fig{fig_4x4_winrate}
-\caption{Share of evaluation games reaching 2048 (solid) and 4096 (dashed).}
-\end{subfigure}\hfill
-\begin{subfigure}[b]{0.48\textwidth}
-\fig{fig_4x4_train}
-\caption{Mean score of each block of 1\,000 training games.}
-\end{subfigure}\\[4pt]
-\begin{subfigure}[b]{0.48\textwidth}
-\fig{fig_4x4_score}
-\caption{Mean evaluation score (log scales).}
-\end{subfigure}\hfill
-\begin{subfigure}[b]{0.48\textwidth}
-\fig{fig_4x4_maxtile}
-\caption{Largest tile at the end of the game, best agent and heuristics.}
-\end{subfigure}
-\caption{Semi-gradient Sarsa agents with $n$-tuple features on the $4\times4$ board. rcs = rows, columns and squares (4-tuples), rect = $2\times3$ rectangles (6-tuples); bands = min--max over 2 seeds.}
-\label{fig:4x4}
-\end{figure}
-
-\begin{table}[ht]
-\centering
-\begin{tabular}{llrrrrrr}
-\toprule
-Features & $\alpha$ & Score & Moves & $P(2048)$ & $P(4096)$ & $P(8192)$ & Weights\\
-\midrule
-rect (6-tuples) & 0.1  & 65\,958 & 3\,016 & 0.895 & 0.670 & 0.147 & 33.5 M\\
-rect (6-tuples) & 0.25 & 60\,111 & 2\,758 & 0.863 & 0.620 & 0.125 & 33.5 M\\
-rect (6-tuples) & 0.5  & 50\,051 & 2\,359 & 0.878 & 0.575 & 0.011 & 33.5 M\\
-rcs (4-tuples)  & 0.05 & 44\,060 & 2\,115 & 0.788 & 0.462 & 0.004 & 0.33 M\\
-rcs (4-tuples)  & 0.1  & 42\,220 & 2\,034 & 0.822 & 0.436 & 0.002 & 0.33 M\\
-rcs (4-tuples)  & 0.25 & 30\,662 & 1\,550 & 0.764 & 0.144 & 0.000 & 0.33 M\\
-rcs (4-tuples)  & 0.5  & 18\,938 & 1\,026 & 0.456 & 0.000 & 0.000 & 0.33 M\\
-\midrule
-rect (6-tuples), $10^6$ games & 0.1 & 92\,352 & 4\,004 & 0.927 & 0.811 & 0.422 & 33.5 M\\
-\midrule
-greedy heuristic & -- & 3\,027 & 256 & 0.000 & 0.000 & 0.000 & --\\
-corner rule      & -- & 2\,564 & 227 & 0.000 & 0.000 & 0.000 & --\\
-random           & -- & 1\,084 & 118 & 0.000 & 0.000 & 0.000 & --\\
-\bottomrule
-\end{tabular}
-\caption{$4\times4$ board after 300\,000 training games (last row: one million games, two other seeds): mean over 2 seeds of the evaluation on 1\,000 games each (95\% half-width of the score about 2\,000 for the best agents, of the probabilities at most 0.03). The greedy heuristic reaches 512 in 12\% of the games and 1024 in 0.1\%; the corner rule 512 in 5\%.}
-\label{tab:4x4}
-\end{table}
-
-\paragraph{Results.} Table~\ref{tab:4x4} and Figure~\ref{fig:4x4} show that the semi-gradient Sarsa agent learns to play the real game from scratch, with no knowledge of the spawn distribution and no exploration other than the random tiles. The best configuration (6-tuples, $\alpha=0.1$) reaches a mean score of 66\,000, creates the 2048 tile in 90\% of the games, 4096 in 67\% and 8192 in 15\%, in games of 3\,000 moves on average; the hand-made heuristics never pass 1024 and score twenty times less. Three observations:
-\begin{itemize}[leftmargin=*]
-\item \textbf{Features.} The 4-tuple network learns fast (the share of games reaching 2048 passes 50\% within 10\,000 games) but saturates around 45\,000 points and 80\% of 2048: rows, columns and squares cannot represent the long-range structure (a monotone ``snake'' of large tiles) that the end-game needs. The 6-tuples start slowly, because their 33 million weights must each be visited, overtake the 4-tuples after 30\,000 games, and are still improving at 300\,000 (Figure~\ref{fig:4x4}b): a longer run of this configuration is reported below. This is the same approximation-error effect measured exactly on the small boards, with the roles reversed: here the larger table is needed and affordable.
-\item \textbf{Step size.} The learning rate trades speed against the final level: $\alpha=0.5$ learns fastest in the first thousand games and ends worst (the 4-tuple agent with $\alpha=0.5$ stalls at 19\,000 points, with the TD errors of the long late games undoing what the early games learned); $\alpha=0.05$--$0.1$ ends best. The effective per-weight step of \cite{szubert2014}, $0.0025$ with 17 active features, corresponds to $\alpha\approx0.04$ in our normalisation, consistent with this.
-\item \textbf{Comparison with the literature.} \cite{szubert2014} report 97\% of games reaching 2048 after 500\,000 games with the 17 4-tuples and no weight sharing, and the stronger networks of \cite{yeh2017,jaskowski2018} reach 32768 regularly; our 300\,000-game runs with the same update are in the expected range, and the gap to the state of the art is a matter of tuple sets, training time and step-size schedules, not of method.
-\end{itemize}
-\paragraph{Longer training.} The best configuration (6-tuples, $\alpha=0.1$) was trained for one million games with two further seeds (last row of Table~\ref{tab:4x4}; the curve of Figure~\ref{fig:4x4}b extends to $10^6$). The agent keeps improving all the way: the mean score rises from 66\,000 at 300\,000 games to 92\,000, the 2048 tile is reached in 93\% of the games, 4096 in 81\%, 8192 in 42\% and 16384 in two games out of a thousand, in games of 4\,000 moves; the two seeds agree within 3\,000 points. Between 700\,000 and one million games the share of games reaching 4096 still gains four points, so at this scale the 6-tuple network is limited by training time, not by its capacity, and the 97\% of \cite{szubert2014} at 500\,000 games (a smaller per-weight step and no weight sharing, hence 17 independent tables) is within reach of the same code. The 33 million weights of the network are the price: each is updated only when its pattern appears, and the end-game patterns with large tiles appear only in long games, late in the training.
-
 \subsection{Final test: deep Q-learning}
 \label{sec:dqn}
+
+\todo{Note for Tommaso: our own $n$-tuple experiments are no longer part of the report; their results are now cited from the literature (Section~\ref{sec:literature}, Table~\ref{tab:literature}). The comparisons with the $n$-tuple agent in this section (text, Table~\ref{tab:dqn}, Figure~\ref{fig:dqn4x4}) need to be updated in your rework.}
 
 As a final test, outside the methods of the course, the RL part ends with a deep Q-network (DQN)~\cite{mnih2015} built as in the PyTorch tutorial~\cite{paszke_dqn}. DQN is Q-learning (\S6.5) with a neural network approximating the action values (\S9.7), stabilised by two devices that the course does not cover: an \emph{experience replay memory}, from which every update draws a random minibatch of past transitions, and a \emph{target network}, a slowly updated copy of the network that computes the targets $r+\gamma\max_{u'}Q'(x',u')$. Network and hyper-parameters are those of the tutorial: a perceptron with two hidden layers of 128 ReLU units and one output per move; a memory of the last 10\,000 transitions and minibatches of 128; the Huber loss; AdamW with learning rate $3\cdot10^{-4}$ (amsgrad) and gradients clipped at 100; a soft update of the target network after every move, $\theta'\leftarrow0.005\,\theta+0.995\,\theta'$; $\epsilon$-greedy exploration with $\epsilon=0.01+0.89\,e^{-k/2500}$ after $k$ moves; $\gamma=0.99$; one gradient step per move. Only three things are adapted to 2048: the input is the one-hot encoding of the exponent of every cell (16 values per cell); the illegal moves are masked, both when acting and in the max of the target; the reward is the score of the move divided by the target tile (64 or 2048), so that the returns are of order one, which leaves the greedy policy unchanged. Unlike the agents of Sections~\ref{sec:tabular} and~\ref{sec:ntuple}, the network does not use the slide rule: like the plain tabular Q-learning, it learns $q(x,u)$ for the four moves from the board alone, and it must also discover which patterns of the board matter. It is trained with the score reward on the $2\times3$ board with target 64, where its greedy policy is evaluated exactly, and on the original $4\times4$ game, evaluated by simulation, with three seeds each.
 
@@ -589,43 +608,81 @@ On the $4\times4$ board the picture is reversed. After 10\,000 games (1.5 millio
 \section{The game itself: what is known}
 \label{sec:literature}
 
-The questions a player asks about 2048 are the questions of this section: can the game always be won, is there an optimal strategy, and what are the good heuristics. The exact results of Section~\ref{sec:dp-results} answer them completely for the small boards; for the original game the answers come from the literature.
+A player asks three questions about 2048: can the game always be won, is there an optimal strategy, and which rules of thumb are good. On the small boards our exact results answer all three. For the original game the answers come from the literature, and this section collects them. It also reports what other people achieved on the $4\times4$ board with the learning methods that go beyond the course, and compares them with our results.
 
-\paragraph{Is 2048 always solvable?} Not on the small boards: on the $2\times3$ board with target 64 even the optimal player loses 6\% of the games, and as soon as $p_4>0$ there are unlucky spawn sequences that no policy survives (Figure~\ref{fig:p4}). On the $4\times4$ board the question is open. Slizkov~\cite{slizkov2023} gives the only rigorous results: a strategy that reaches the 256 tile with probability 1, and a strategy that creates the 2048 tile with probability at least 0.99969. Whether some strategy wins with probability 1 is not known. If the new tiles were placed by an adversary instead of at random, the game would be lost well before 2048: this is easy to believe and to observe with ``evil'' variants of the game, but we found no proof of it. The largest tile that can ever appear on a $4\times4$ board is $131072=2^{17}$ (sixteen cells holding $2^{17},2^{16},\dots,2^{2}$ plus a lucky final 4), and the best programs do reach $2^{15}=32768$ regularly.
+\paragraph{Is 2048 always solvable?} Not on the small boards. On the $2\times3$ board with target 64 even the optimal player loses 6\% of the games, and as soon as $p_4>0$ there are unlucky sequences of new tiles that no policy survives (Figure~\ref{fig:p4}). On the $4\times4$ board the question is open. Slizkov~\cite{slizkov2023} gives the only rigorous results: a strategy that reaches the 256 tile with probability 1, and a strategy that creates the 2048 tile with probability at least 0.99969. Whether some strategy wins with probability 1 is not known. If an adversary placed the new tiles instead of chance, the game would be lost well before 2048: this is easy to believe and to observe in ``evil'' variants of the game, but we found no proof of it. The largest tile that can ever appear on a $4\times4$ board is $131072=2^{17}$ (sixteen cells holding $2^{17},2^{16},\dots,2^{2}$, plus a lucky final 4), and the best programs reach $2^{15}=32768$ regularly.
 
-\paragraph{Is the optimal strategy known?} No, and there are reasons to believe it is out of reach. The state space of the $4\times4$ game is bounded by $11^{16}\approx4.6\cdot10^{16}$ states before the target (Table~\ref{tab:states}), which is beyond exact dynamic programming by many orders of magnitude; the exact solutions of this project stop at $3\times3$ boards with 5 million states. Computational complexity results show that the difficulty is intrinsic to the rules and not to the board size: Langerman and Uno~\cite{langerman2016} prove that deciding whether a given position on an $m\times n$ board can be played to reach a given tile value is NP-hard for 2048, Threes!\ and most of their variants; Abdelkader, Acharya and Dasler~\cite{abdelkader2016} prove NP-hardness even when no new tiles appear; Mehta~\cite{mehta2014} shows that reaching a target configuration is PSPACE-complete for a variant of the game. These are statements about generalised boards and worst-case instances, not about the probability of winning the $4\times4$ game, but they rule out a simple closed-form optimal strategy.
+\paragraph{Is the optimal strategy known?} No, and it is probably out of reach. The $4\times4$ game has up to $11^{16}\approx4.6\cdot10^{16}$ states before the target (Table~\ref{tab:states}), many orders of magnitude beyond exact DP; our exact solutions stop at the $3\times3$ board with 5 million states. Results from computational complexity show that the difficulty lies in the rules themselves, not only in the size of the board. Langerman and Uno~\cite{langerman2016} prove that deciding whether a given position on an $m\times n$ board can be played to reach a given tile is NP-hard, for 2048, Threes!\ and most of their variants. Abdelkader, Acharya and Dasler~\cite{abdelkader2016} prove NP-hardness even when no new tiles appear. Mehta~\cite{mehta2014} shows that reaching a target configuration is PSPACE-complete for a variant of the game. These results are about general board sizes and worst-case positions, not about the probability of winning the $4\times4$ game, but they rule out a simple closed-form optimal strategy.
 
-\paragraph{Which heuristics are good?} Human players use the corner rule (keep the largest tile in a corner and the big tiles along one edge, ordered as a ``snake''), keep the board monotone and smooth, and keep as many empty cells as possible. Our exact results qualify this advice: on the small boards the corner rule is dramatically worse than optimal play (0.07\% versus 93.9\% on $2\times3$/64, 36\% versus 99.999\% on $2\times4$/64, 43\% versus 100\% on $3\times3$/64), because a rigid move order wastes the few cells available. On the $4\times4$ board, programs built on exactly these heuristics do well when they are combined with search: the expectimax player of \cite{nneonneo2014}, with a hand-tuned evaluation (monotonicity, smoothness, empty cells, merges) and a depth of 4--8 plies, reaches 2048 in essentially every game and 16384 in most. The strongest players learn the evaluation instead of hand-tuning it: temporal-difference learning of the values of the afterstates with $n$-tuple features~\cite{szubert2014}, the update of Section~\ref{sec:ntuple}, wins 97\% of the games after half a million training games; multistage learning and larger tuples~\cite{yeh2017} reach the 32768 tile in 31.75\% of the games; Ja\'skowski~\cite{jaskowski2018} adds temporal coherence learning, weight promotion and redundant encoding, and \cite{guei2022} optimistic initialisation, to reach 32768 in about 72\% of the games with average scores above 600\,000. All of these are, at the core, the semi-gradient update of this project: the state of the art of 2048 is a course method applied with care and a lot of computation.
+\paragraph{Which rules of thumb are good?} Human players use the corner rule (keep the largest tile in a corner, and the big tiles along one edge ordered as a ``snake''), keep the board monotone and smooth, and keep as many cells free as possible. Our exact results qualify this advice. On the small boards the corner rule is far worse than optimal play: 0.07\% against 93.9\% of games won on $2\times3$/64, 36\% against 99.999\% on $2\times4$/64, 43\% against 100\% on $3\times3$/64. A fixed order of moves wastes the few cells available. On the $4\times4$ board the rules of thumb alone are weak too: in 10\,000 games played with our engine the corner rule scores 2\,564 points on average and the greedy rule 3\,027; neither ever creates the 2048 tile (the greedy rule reaches 1024 in 0.1\% of the games). The same rules become strong when they are combined with search. The expectimax player of \cite{nneonneo2014} looks several moves ahead and scores the positions it reaches with a hand-tuned evaluation (monotonicity, smoothness, free cells, merges). In 100 games it always reached 2048, reached 16384 in 94\% of them and 32768 in 36\%.
+
+\paragraph{Learning on the real board: afterstates and $n$-tuple networks.}
+\label{sec:ntuple}
+The strongest players do not hand-tune the evaluation: they learn it, with the update of our Sarsa on afterstates (Section~\ref{sec:tabular}). On the $4\times4$ board a table with one value per afterstate is impossible, so they replace it with a linear approximation, $\hat V(y)=\mathbf w^\top\boldsymbol\phi(y)$ \cite[\S9.4]{sutton2018}, and apply the semi-gradient form of the same update \cite[\S10.1]{sutton2018}. The features $\boldsymbol\phi$ are called an \emph{$n$-tuple network}~\cite{szubert2014}. Each feature looks at a fixed group of $n$ cells (a row, a column, a $2\times3$ rectangle) and reads the pattern of tiles in it; each possible pattern has its own weight in a lookup table. The value of a board is the sum of the weights of the patterns it contains. Table~\ref{tab:literature} collects the main results.
+
+\begin{table}[ht]
+\centering\small
+\begin{tabular}{>{\raggedright\arraybackslash}p{6.3cm}>{\raggedright\arraybackslash}p{6.9cm}}
+\toprule
+Method & Result on the $4\times4$ game\\
+\midrule
+Corner rule / greedy rule (our runs, 10\,000 games) & 2\,564 / 3\,027 points on average; never 2048\\
+Expectimax search with a hand-tuned evaluation~\cite{nneonneo2014} & 2048 in all of 100 games; 16384 in 94\%, 32768 in 36\%\\
+TD learning of afterstate values with 17 tuples of 4 cells~\cite{szubert2014} & over 97\% of games reach 2048\\
+Multistage TD learning, larger tuples, expectimax search~\cite{yeh2017} & 32768 in 31.75\% of 10\,000 games; once 65536\\
+Delayed temporal coherence learning, weight promotion, redundant encoding~\cite{jaskowski2018} & the best 2048 program known at the time of publication\\
+Optimistic initialisation, multistage learning, expectimax search~\cite{guei2022} & 32768 in 72\% of the games; average score 625\,377\\
+\bottomrule
+\end{tabular}
+\caption{Published results on the original game, compared with the rules of thumb measured with our engine.}
+\label{tab:literature}
+\end{table}
+
+How do these compare with what we did?
+\begin{itemize}[leftmargin=*]
+\item \emph{Same update, different scale.} Szubert and Ja\'skowski~\cite{szubert2014} learn afterstate values with the same update as our Sarsa on afterstates, playing greedily, with $n$-tuple features in place of the table. Our table can only work on boards small enough to list every afterstate; the features are what carry the same update to the $4\times4$ board. On the $2\times3$ board our tabular version wins 80--85\% of the games within 200\,000 episodes; their 4-tuple network reaches 2048 in over 97\% of the games on the real board.
+\item \emph{Optimism helps in both.} Guei~\cite{guei2022} sets all the weights to large initial values to make the agent explore states it has rarely visited. This is the optimistic initialisation of \cite[\S2.6]{sutton2018}, and it is also what gave our best tabular results with the sparse win reward (0.875 for Q-learning, 0.848 for Sarsa on afterstates, Table~\ref{tab:tabular}).
+\item \emph{The step size matters.} Our grid showed that the best constant step size depends on the budget, and that decaying schedules do not always help (Figure~\ref{fig:schedule}). Ja\'skowski~\cite{jaskowski2018} avoids the choice with temporal coherence learning, which adapts the step size of each weight automatically.
+\item \emph{Stages.} Yeh et al.~\cite{yeh2017} split the game into stages by the largest tile reached and train separate weights for each stage. This echoes our use of the tile sum as a clock (Corollary~\ref{cor:dag}): in both cases, where the game stands is a key piece of information.
+\end{itemize}
+These programs add search (expectimax over the next moves and tiles), larger networks and millions of training games. At the core, though, they use an update of the course: what separates them from our tabular agent is the scale of the approximation and of the computation, not the learning rule.
 
 \section{Discussion and conclusions}
 
-\paragraph{What dynamic programming taught us about the game.} The tile sum is a clock, so 2048 on any board is a total-cost problem with termination states that every policy reaches in a bounded number of moves: value iteration is exact after finitely many iterations (46 on the $2\times3$ board), and ordering the updates by tile sum turns it into a single backward pass over the reachable states. On the boards where this pass is affordable (up to $3\times3$, five million states) the exact values overturn the folk wisdom of the game: the corner rule, the greedy rule and random play win a fraction of a percent of the games on $2\times3$/64 and $2\times4$/128 where the optimal player wins 94\% and 99.7\%, and the optimal policy agrees with the corner rule in only half of its decisions. Table~\ref{tab:exceptions} shows why: on a cramped board the value of a position is governed by whether a merge survives the next spawn, which a fixed move order ignores. Luck bounds every player: as soon as $p_4>0$ the optimal win probability is below one (Figure~\ref{fig:p4}), and the sensitivity to $p_4$ is large. Finally, the exact state counts (Table~\ref{tab:states}) make the curse of dimensionality concrete: $4\times4$ is four orders of magnitude beyond the last solvable board, and the complexity results of Section~\ref{sec:literature} say that no shortcut is to be expected.
+\paragraph{What dynamic programming taught us about the game.} The tile sum is a clock. So 2048, on any board, is a total-cost problem whose termination states every policy reaches within a bounded number of moves. Value iteration is therefore exact after finitely many iterations (46 on the $2\times3$ board), and ordering the updates by tile sum turns it into a single backward pass over the reachable states. On the boards where this pass is affordable (up to $3\times3$, five million states), the exact values overturn the folk wisdom of the game. The corner rule, the greedy rule and random play win a fraction of a percent of the games on $2\times3$/64 and $2\times4$/128, where the optimal player wins 94\% and 99.7\%; and the optimal policy agrees with the corner rule in only half of its decisions. Table~\ref{tab:exceptions} shows why: on a cramped board, what matters is whether a merge survives the next random tile, and a fixed order of moves ignores this. Luck limits every player: as soon as $p_4>0$ the optimal win probability is below one, and it is very sensitive to $p_4$ (Figure~\ref{fig:p4}). Finally, the exact state counts (Table~\ref{tab:states}) make the curse of dimensionality concrete: the $4\times4$ board is many orders of magnitude beyond the last solvable board, and the complexity results of Section~\ref{sec:literature} say that no shortcut should be expected.
 
-\paragraph{Dynamic programming as a measuring instrument for reinforcement learning.} The second use of the exact solution was to evaluate every learned policy exactly instead of by simulation, and every learned value function against $V^*$ under the optimal occupancy. The learning curves of Sections~\ref{sec:prediction}--\ref{sec:ntuple} therefore have no Monte Carlo noise: differences of a few hundredths between methods are real, and the only randomness is the learning itself. This made four things visible that simulation would have blurred: on this game Monte Carlo prediction beats TD(0) and intermediate $n$ beat both, the reverse of the textbook random walk at the start; the plateau of the $n$-tuple features (0.09 of win probability on $2\times3$ with rows, columns and squares, independent of the training length); the fact that symmetric weight sharing improves the values four-fold without improving the policy; and the gap between a learned $Q$ and the greedy policy it induces (0.6 agreement with $\pi^*$ and 0.8 of the optimal win probability at the same time).
+\paragraph{Dynamic programming as a measuring instrument.} The second use of the exact solution was to measure. Every learned policy was evaluated exactly instead of by simulation, and every learned value function was compared with $V^*$. The learning curves therefore have no Monte Carlo noise: differences of a few hundredths between methods are real, and the only randomness is the learning itself. This made visible things that simulation would have blurred:
+\begin{itemize}[leftmargin=*]
+\item the choice of the reward: the rules-of-thumb reward we started from, the score and the win lead to almost the same optimal play (0.9387, 0.9387, 0.9393), and the analysis of what each reward adds up to explains why (Section~\ref{sec:reward});
+\item on this game Monte Carlo prediction beats TD(0), and intermediate $n$ beat both: the reverse of the textbook random walk at the start;
+\item the gap between a learned $Q$ and the greedy policy it induces: about 0.6 agreement with the optimal decisions and 0.8 of the optimal win probability at the same time.
+\end{itemize}
 
-\paragraph{What worked in reinforcement learning, and why.} With a dense reward (the score) every tabular method of the course learns a reasonable policy on $2\times3$ within 200\,000 episodes; with the sparse win reward and zero initial values the greedy learner locks on the first rewarded moves, and optimistic initialisation, not $\epsilon$-greedy play, is what repairs it, because it explores every move once and then stops. Q-learning was the best method on plain tables (0.88 with optimism) and Sarsa on afterstates the best method overall (0.85 with decaying schedules, 0.92 with optimistic greedy play), for a structural reason: writing $q(x,u)=r(x,u)+V(M(x,u))$ is exact, one value per afterstate replaces four action values, the agent needs the slide rule but not the spawn distribution, and every update improves all the moves that lead to the same afterstate. Larger constant step sizes won within a fixed budget and decaying schedules only helped the methods that propagate credit further per update, the same trade-off that made intermediate $n$ best in prediction. On the $4\times4$ board episodic semi-gradient Sarsa \cite[\S10.1]{sutton2018} with linear $n$-tuple features reached 2048 in 90\% of the games after 300\,000 games and in 93\% after a million, with a mean score of 92\,000, thirty times the best heuristic, and no exploration other than the random tiles; the published players that reach 32768 use the same update with larger tuples, more games and better step-size control, so what separates this project from the state of the art is engineering, not method.
+\paragraph{What worked in reinforcement learning, and why.} The first decision was the reward. Our first idea, rewarding free cells, a growing tile sum and new largest tiles, turned out to contain no more than the game score: two of its parts carry no information about which move is better, and the third is a graded win reward. It learned as well as the score, but no better, so we kept the score, which the game provides with no weights to tune. With this dense reward every tabular method of the course learns a reasonable policy on $2\times3$ within 200\,000 episodes. With the sparse win reward and zero initial values the greedy learner locks onto the first moves that ever paid, and optimistic initialisation is what repairs it, because every move looks promising until it has been tried. Q-learning was the best method on plain tables (0.88 with optimism). Sarsa on afterstates was the best method overall (0.85 with decaying schedules), for a structural reason: writing $q(x,u)=r(x,u)+V(M(x,u))$ is exact, one value per afterstate replaces four values per board, the agent needs the slide rule but not the probabilities of the random tile, and every update improves all the moves that lead to the same afterstate. Larger constant step sizes won within a fixed budget, and decaying schedules only helped the methods that pass information further back at each update: the same trade-off that made an intermediate $n$ best in prediction.
 
-\paragraph{The final test.} The deep Q-network of the PyTorch tutorial, outside the course, is the best learner on the $2\times3$ board for a given number of games (0.81 after 20\,000 games, against 0.65 for the best table at the same point), because the network generalises and the replay memory reuses every move many times. On the $4\times4$ game, after 10\,000 games, it is still below the rules of thumb (2\,300 against 2\,600--3\,000 points), where the semi-gradient Sarsa with $n$-tuple features is already at 16\,000--31\,000. On this game, knowing the slide rule and choosing good features count for more than a deep network trained from raw cells.
+\paragraph{From the small board to the real game.} Tables stop at small boards. The literature (Section~\ref{sec:literature}) shows what happens when our best tabular method, Sarsa on afterstates, is carried to the $4\times4$ board with a linear approximation and $n$-tuple features: over 97\% of games reach 2048~\cite{szubert2014}, and with search, optimism and staged learning the 32768 tile is reached in 72\% of the games~\cite{guei2022}. These players use an update of the course; what separates them from our tabular agent is the scale of the approximation and of the computation.
 
-\paragraph{What remains open.} Whether the original game can be won with probability one is unknown (the best lower bound is 0.99969), the optimal policy is out of reach of exact methods and the problem is NP-hard on general boards, so the strongest strategies are learned approximations, validated by play rather than by proof. Within this project and the methods of the course, the natural next steps are semi-gradient $n$-step Sarsa \cite[\S10.2]{sutton2018} with the same features, which the prediction results suggest would learn faster than the one-step update, longer training of the 6-tuple features, and a direct measure, on the small boards, of how far the plateau of the features is from the best achievable with them (the projection of $V^*$ on the feature space), which the exact solution makes possible.
+\paragraph{The final test.} \todo{Tommaso: update after the DQN rework.} The deep Q-network of the PyTorch tutorial, outside the course, is the best learner on the $2\times3$ board for a given number of games (0.81 after 20\,000 games, against 0.65 for the best table at the same point), because the network generalises and the replay memory reuses every move many times. On the $4\times4$ game, after 10\,000 games, it is still below the rules of thumb (2\,300 against 2\,600--3\,000 points).
+
+\paragraph{What remains open.} Whether the original game can be won with probability one is unknown (the best lower bound is 0.99969). The optimal policy is out of reach of exact methods, and the problem is NP-hard on general boards, so the strongest strategies are learned approximations, validated by play rather than by proof. Within the methods of the course, the natural next step for this project is the one the literature took: Sarsa on afterstates with a linear approximation on the $4\times4$ board. The small boards would then allow a measure that the literature cannot make: how far the best value function that a given set of features can represent is from $V^*$.
 
 \appendix
 \section{Reproducibility}
 
-The code is at \url{https://github.com/EdoardoCaproni/2048} (Python 3.10 or later, numpy, matplotlib, numba; PyTorch for the final test). The modules are \texttt{game2048.py} (rules of the game and the Gymnasium-style environment; the reference implementation), \texttt{dp2048.py} (exact DP: reachable states by stage, backward recursion, value iteration, policy evaluation, occupancy, Monte Carlo simulation), \texttt{fast2048.py} (the same rules on a 64-bit bitboard compiled with numba, about 50 times faster, checked move by move against the reference implementation by \texttt{test\_2048.py}), \texttt{predict2048.py} (TD(0), $n$-step TD and Monte Carlo prediction), \texttt{rl2048.py} (tabular control agents and the exact evaluator), \texttt{ntuple2048.py} (semi-gradient Sarsa with $n$-tuple features) and \texttt{dqn2048.py} (the DQN of the final test). Every number and figure of this report is produced by a script in \texttt{experiments/} and written to \texttt{results/}:
+The code is at \url{https://github.com/EdoardoCaproni/2048} (Python 3.10 or later, numpy, matplotlib, numba; PyTorch for the final test). The modules are \texttt{game2048.py} (rules of the game and the Gymnasium-style environment; the reference implementation), \texttt{dp2048.py} (exact DP: reachable states by stage, backward recursion, value iteration, policy evaluation, occupancy, Monte Carlo simulation), \texttt{fast2048.py} (the same rules on a 64-bit bitboard compiled with numba, about 50 times faster, checked move by move against the reference implementation by \texttt{test\_2048.py}), \texttt{predict2048.py} (TD(0), $n$-step TD and Monte Carlo prediction), \texttt{shaping2048.py} (the rules-of-thumb reward of Section~\ref{sec:reward}), \texttt{rl2048.py} (tabular control agents and the exact evaluator) and \texttt{dqn2048.py} (the DQN of the final test). Every number and figure of this report is produced by a script in \texttt{experiments/} and written to \texttt{results/}:
 
 \begin{center}\small
-\begin{tabular}{ll}
+\begin{tabular}{>{\raggedright\arraybackslash}p{5.4cm}>{\raggedright\arraybackslash}p{9.6cm}}
 \toprule
 Script & Produces\\
 \midrule
 \texttt{dp\_figures.py} & Section~\ref{sec:dp-results}: Tables~\ref{tab:states}, \ref{tab:exceptions}, Figures~\ref{fig:stages}--\ref{fig:p4}\\
 \texttt{dp\_value\_iteration.py} & Section~\ref{sec:vi}: Table~\ref{tab:vi}, Figure~\ref{fig:vi} (2 minutes)\\
+\texttt{exp\_reward.py}, \texttt{plot\_reward.py} & Section~\ref{sec:reward}: Tables~\ref{tab:reward}, \ref{tab:reward-learning}, Figure~\ref{fig:reward} (15 min)\\
 \texttt{exp\_prediction.py} & Section~\ref{sec:prediction}: Figure~\ref{fig:prediction} (50 runs, under a minute)\\
 \texttt{exp\_tabular\_2x3.py}, \texttt{plot\_tabular.py} & Section~\ref{sec:tabular}: Table~\ref{tab:tabular}, Figure~\ref{fig:tabular} (90 runs, 45 min on 26 cores)\\
 \texttt{exp\_tabular\_grid.py}, \texttt{plot\_schedule.py} & Figures~\ref{fig:grid}, \ref{fig:schedule} (130 runs)\\
-\texttt{exp\_ntuple\_small.py}, \texttt{plot\_ntuple\_small.py} & Section~\ref{sec:ntuple}, small boards (41 runs, then the exact evaluations)\\
-\texttt{exp\_4x4.py}, \texttt{eval\_4x4.py}, \texttt{plot\_4x4.py} & Table~\ref{tab:4x4}, Figure~\ref{fig:4x4} (14 runs of one hour)\\
+\texttt{eval\_4x4.py} & rules of thumb on the $4\times4$ board, Table~\ref{tab:literature}\\
 \texttt{exp\_dqn.py}, \texttt{plot\_dqn.py} & Section~\ref{sec:dqn}: Table~\ref{tab:dqn}, Figures~\ref{fig:dqn2x3}, \ref{fig:dqn4x4} (6 runs in parallel, 50 min)\\
 \texttt{export\_viewer.py} & data of the policy viewer (best policy of every method, retrained)\\
 \texttt{bench\_engine.py} & throughput of the two engines\\
@@ -633,7 +690,7 @@ Script & Produces\\
 \end{tabular}
 \end{center}
 
-The notebook \texttt{2048\_DP.ipynb} walks through Part 1 interactively, and \texttt{viz2048.py} animates any of the policies playing. The page \texttt{viewer/index.html}, which opens in any browser, shows the best policy of every method of this report playing: on the $2\times3$ board each policy is a table over the decision states, retrained with the configuration and the seed of its best run (the training is deterministic, so its exact win probability is the one reported), and the page shows at every move the optimal win probability $V^*$ and the exact value $Q^*$ of every move; on the $4\times4$ board it runs the $n$-tuple agent (4-tuples) and the DQN.
+The notebook \texttt{2048\_DP.ipynb} walks through Part 1 interactively, and \texttt{viz2048.py} animates any of the policies playing. The page \texttt{viewer/index.html}, which opens in any browser, shows the best policy of every method of this report playing: on the $2\times3$ board each policy is a table over the decision states, retrained with the configuration and the seed of its best run (the training is deterministic, so its exact win probability is the one reported), and the page shows at every move the optimal win probability $V^*$ and the exact value $Q^*$ of every move; on the $4\times4$ board it runs the learned agents of the repository, including the DQN.
 
 \bibliographystyle{plain}
 \bibliography{refs}

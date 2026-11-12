@@ -248,3 +248,32 @@ policy is evaluated by exact policy evaluation (backward pass with the
 learned greedy policy), and the learned values are compared with $V^*$
 weighted by the optimal occupancy. No Monte Carlo noise: differences of a
 few hundredths are real; the only randomness is in learning.
+
+## D. Added 12 Nov 2026 (report reframe)
+
+Since 12 Nov the report no longer presents our own n-tuple experiments:
+their results (items 35-38 above) are cited from the literature
+(Szubert & Jaskowski 2014, Yeh 2017, Jaskowski 2018, Guei 2022; report
+Section 7, Table 9). Answer about them as "what others achieved with the
+same afterstate update plus features", not as our runs.
+
+**41. Why not reward free cells, a growing tile sum, or each new largest
+tile?** That was our first idea (report Section 6.2). Add up each part
+over a game:
+- tile sum: the move never changes it (Proposition 1, the clock), only the
+  new tile does, so it pays 2 + 2 p4 per move whatever you do = "stay
+  alive", no information about which move is better;
+- free cells: the changes add up to free(end) - free(start) = -free(start),
+  because a lost game ends on a full board: a constant, cannot change the
+  best policy (DP: same move on all 68 340 boards, values shifted by
+  exactly free(x));
+- milestone bonus: adds up to about 2 x the largest tile reached = a graded
+  win reward.
+Exact DP on 2x3/64, optimal policy of each reward, measured on P(win):
+win 0.9393, score 0.9387, naive 0.9387, milestones alone 0.9392, tile sum
+alone 0.9382, free cells alone 0.0007 (all moves tie, tie-break = corner
+rule). Learning (Sarsa on afterstates, 5 seeds): naive = score (0.797 vs
+0.796 after 200k episodes; both ~0.53-0.54 after 10k, win reward 0.10).
+So it works but no better than the score, which the game gives for free
+with no weights to tune. Principle: the reward says *what* to achieve,
+not *how* (Sutton & Barto 3.2, the chess example).

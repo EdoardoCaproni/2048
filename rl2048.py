@@ -342,6 +342,7 @@ class AfterstateSarsa(TabularAgent):
         super().__init__(env, gamma, q_init)
         self.V = {}
         self.win_mode = env.reward == 'win'
+        self.r = env.reward_fn  # r(board, afterstate, points); None for 'win'
 
     def v(self, y):
         return self.V.get(y, self.q_init)
@@ -353,7 +354,7 @@ class AfterstateSarsa(TabularAgent):
             if self.win_mode:
                 q[action] = 1.0 if self.game.is_win(after) else self.v(after)
             else:
-                q[action] = points + self.gamma * self.v(after)
+                q[action] = self.r(board, after, points) + self.gamma * self.v(after)
         return q
 
     def _choose(self, board, moves, eps, rng):
@@ -386,7 +387,7 @@ class AfterstateSarsa(TabularAgent):
             if self.win_mode:
                 target = 1.0 if self.game.is_win(after2) else self.v(after2)
             else:
-                target = points2 + self.gamma * self.v(after2)
+                target = self.r(s2, after2, points2) + self.gamma * self.v(after2)
             self.V[after] = self.v(after) + alpha * (target - self.v(after))
             s, action, after = s2, action2, after2
 
@@ -462,6 +463,15 @@ class ExactEvaluator:
             pickle.dump(ev, f, protocol=pickle.HIGHEST_PROTOCOL)
         return ev
 
+    def add_reference(self, reward):
+        """Optimal values of another reward (a name of shaping2048.REWARDS),
+        used as the reference of the value error of agents trained with it."""
+        if not hasattr(self, 'V_extra'):
+            self.V_extra = {}
+        if reward not in self.V_extra:
+            self.V_extra[reward] = dp.solve_optimal(self.game, reward,
+                                                    self.layers_score)[0]
+
     def evaluate(self, agent):
         g = self.game
         pi = agent.policy()
@@ -470,7 +480,9 @@ class ExactEvaluator:
         if self.V_score is not None:
             out['score'] = dp.start_value(
                 g, dp.evaluate_policy(g, pi, 'score', self.layers_score))
-        V_ref = self.V_win if agent.reward == 'win' else self.V_score
+        refs = {'win': self.V_win, 'score': self.V_score,
+                **getattr(self, 'V_extra', {})}
+        V_ref = refs.get(agent.reward)
         total = seen = agree = 0.0
         err_w = err = 0.0
         n_seen = 0
