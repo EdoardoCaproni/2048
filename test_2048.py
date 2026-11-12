@@ -483,6 +483,47 @@ def test_ntuple_small_board():
     assert frames[-1]['phase'] in ('won', 'lost')
 
 
+def test_fast_tabular():
+    """rlfast2048: the six tabular methods on the bitboard engine learn on
+    2x3 as the reference code does (exact P(win) of the greedy policy, score
+    reward, a table that starts small and doubles several times), and a
+    table restricted to its most visited boards plays the same moves there."""
+    import rl2048 as rl
+    import rlfast2048 as rf
+    g = Game2048(2, 3, target=64)
+    ev = rl.ExactEvaluator(g, with_score=False)
+    boards = [b for layer in ev.layers_win.values() for b in layer]
+    for method in rf.METHODS:
+        agent = rf.FastTabular(method, 2, 3, 64, seed=0, capacity_log2=10)
+        agent.learn(100_000, None if method == 'mc_control' else 0.1, 0.1, seed=1)
+        acts, known = agent.greedy_actions(boards)
+        table = {b: a for b, a, k in zip(boards, acts, known) if k and a is not None}
+
+        class Frozen:
+            reward = None
+
+            @staticmethod
+            def greedy_action(board, moves):
+                return table.get(board)
+
+            @staticmethod
+            def policy():
+                return lambda board, moves: (
+                    {} if not moves else {table[board]: 1.0} if board in table
+                    else dp.corner_policy(board, moves))
+        p = ev.evaluate(Frozen)['p_win']
+        assert p > 0.5, (method, p)
+    agent = rf.FastTabular('q_learning', 4, 4, 2048, seed=0)
+    agent.learn(300, 0.1, 0.1, seed=2)
+    res = agent.evaluate(20, seed=3)
+    assert 0.0 < res['unseen'] < 1.0 and res['score'] > 0, res
+    keys, vals, visits = agent.most_visited(1000)
+    small = rf.FastTabular.from_entries(agent.config(), keys, vals, visits)
+    import fast2048 as fb
+    some = [fb.decode(k, 4, 4) for k in keys[:200]]
+    assert small.greedy_actions(some)[0] == agent.greedy_actions(some)[0]
+
+
 if __name__ == '__main__':
     tests = [f for name, f in sorted(globals().items())
              if name.startswith('test_')]
