@@ -117,6 +117,87 @@ Consequences:
 
 When a board is processed, every board it can lead to has a larger tile sum and already has its final value, so one pass is enough. The cost is proportional to (number of states) x (moves) x (possible new tiles). This solves the 2x3 board with target 64 (27,022 states) in a fraction of a second and the 3x3 board with target 64 (4.8 million states) in four minutes, in pure Python.
 
+**In the code.** A board is a tuple of exponents, and `game.moves(board)` lists the legal moves as triples `(action, after, points)`: the move $`u`$, the afterstate $`y=M(x,u)`$ and the points $`r(x,u)`$. The weights of the average in $`W^*`$, $`(1-p_4)/|E(y)|`$ and $`p_4/|E(y)|`$, come from the distribution of the new tile:
+
+[src/game.py, lines 125-137](src/game.py#L125-L137): `Game2048.spawn_distribution`
+
+```python
+def spawn_distribution(self, afterstate):
+    """Distribution of the next state: list of (board, probability).
+
+    After a legal move there is always at least one empty cell.
+    """
+    empty = [i for i, e in enumerate(afterstate) if e == 0]
+    out = []
+    for i in empty:
+        for e, p in self._spawn_values:
+            board = list(afterstate)
+            board[i] = e
+            out.append((tuple(board), p / len(empty)))
+    return out
+```
+
+The afterstate equation, $`W^*(y)`$: 1 if $`y`$ holds the target (win objective only), otherwise the average of $`V`$ over the next boards:
+
+[src/dynamic_programming.py, lines 94-98](src/dynamic_programming.py#L94-L98): `afterstate_value`
+
+```python
+def afterstate_value(game, after, V, objective='win'):
+    """W(y): value of an afterstate y, before the random tile appears."""
+    if objective == 'win' and game.is_win(after):
+        return 1.0
+    return sum(p * V[nxt] for nxt, p in game.spawn_distribution(after))
+```
+
+The forward pass groups the reachable boards by tile sum (`layers[sigma]` is the stage $`X_\sigma`$):
+
+[src/dynamic_programming.py, lines 62-77](src/dynamic_programming.py#L62-L77): `reachable_layers`
+
+```python
+layers = defaultdict(set)
+for board, _ in game.initial_distribution():
+    layers[game.tile_sum(board)].add(board)
+sigma = min(layers)
+while sigma <= max(layers):
+    for board in layers.get(sigma, ()):
+        for _, after, _ in game.moves(board):
+            if stop_at_target and game.is_win(after):
+                continue
+            # the new tile adds exponent 1 (a 2) or 2 (a 4), i.e. the
+            # tile sum goes from sigma to sigma + 2 or sigma + 4
+            base = sum(after)
+            for nxt, _ in game.spawn_distribution(after):
+                layers[sigma + 2 ** (sum(nxt) - base)].add(nxt)
+    sigma += 2
+return dict(layers)
+```
+
+The backward pass solves both Bellman equations. `r` is `None` for the win objective, so `q` is $`W^*(M(x,u))`$; for the score it is $`r(x,u)+W^*_{\text{score}}(M(x,u))`$. A board with no legal move keeps the value 0:
+
+[src/dynamic_programming.py, lines 107-125](src/dynamic_programming.py#L107-L125): `solve_optimal`
+
+```python
+layers = _default_layers(game, objective, layers)
+r = _stage_reward(game, objective)
+V, table = {}, {}
+for sigma in sorted(layers, reverse=True):
+    W = {}  # afterstates of the boards of stage sigma have tile sum sigma
+    for board in layers[sigma]:
+        best_action, best_value = None, 0.0  # game over: value 0
+        for action, after, points in game.moves(board):
+            w = W.get(after)
+            if w is None:
+                w = W[after] = afterstate_value(game, after, V, objective)
+            q = w if r is None else w + r(board, after, points)
+            if best_action is None or (q > best_value and
+                                       not _is_tie(q, best_value)):
+                best_action, best_value = action, q
+        V[board] = best_value
+        if best_action is not None:
+            table[board] = best_action
+return V, table, layers
+```
+
 ### Value iteration
 
 Start from $`V^{(0)}=0`$ and apply the Bellman equation to all the states at every iteration,
@@ -126,6 +207,42 @@ V^{(i+1)}(x)=\max_{u\in U(x)} W^{(i)}\big(M(x,u)\big),
 ```
 
 where the superscript $`(i)`$ is the iteration number and $`W^{(i)}`$ is the afterstate equation computed with $`V^{(i)}`$. Started from zero, $`V^{(i)}(x)`$ is the best probability of winning within $`i`$ moves. Since every game is bounded, value iteration is exact after finitely many iterations (46 on the 2x3 board with target 64), not only in the limit. The backward pass above is the same iteration with the states updated in place (Gauss-Seidel) in decreasing tile sum: its first sweep already gives $`V^*`$.
+
+**In the code.** `V` starts at 0 on every state. With `order='jacobi'` the new values go into a new table `new`, $`V^{(i+1)}`$, computed only from the old one, $`V^{(i)}`$; with `order='backward'`, `new` is `V` itself and the update is in place. `delta` is the largest change, $`\max_x|V^{(i+1)}(x)-V^{(i)}(x)|`$, and the loop stops when it is 0:
+
+[src/dynamic_programming.py, lines 187-215](src/dynamic_programming.py#L187-L215): `value_iteration`
+
+```python
+states = [b for sigma in sorted(layers, reverse=True) for b in layers[sigma]]
+V = dict.fromkeys(states, 0.0)
+table = {}
+history = []
+for it in range(1, max_iter + 1):
+    new = V if order == 'backward' else {}
+    W = {}  # afterstate values from the current V (cached per sweep)
+    delta = 0.0
+    for board in states:
+        best_action, best = None, 0.0  # game over: value 0
+        for action, after, points in game.moves(board):
+            w = W.get(after)
+            if w is None:
+                w = W[after] = afterstate_value(game, after, V, objective)
+            q = w if r is None else w + r(board, after, points)
+            if best_action is None or (q > best and not _is_tie(q, best)):
+                best_action, best = action, q
+        delta = max(delta, abs(best - V[board]))
+        new[board] = best
+        if best_action is not None:
+            table[board] = best_action
+    V = new
+    row = {'iteration': it, 'delta': delta, 'start': start_value(game, V)}
+    if V_ref is not None:
+        row['error'] = max(abs(V[b] - V_ref[b]) for b in states)
+    history.append(row)
+    if delta <= tol:
+        break
+return V, table, history
+```
 
 ### Policy evaluation and benchmark policies
 
@@ -138,6 +255,51 @@ V_\mu(x)=W_\mu\big(M(x,\mu(x))\big).
 Here $`\mu(x)`$ is the move the policy plays on the board $`x`$, and $`W_\mu`$ is the afterstate equation with $`V_\mu`$ in place of $`V^*`$.
 
 We use it to evaluate three rules of thumb exactly: the **corner rule** (the first legal move in the order down, left, right, up: keep the big tiles in a corner), the **greedy rule** (the move with the most points) and **random play**. In the RL part, the same evaluation measures every learned policy.
+
+**In the code.** The backward pass of `solve_optimal`, with the maximisation replaced by the moves of the policy. A policy returns `{action: probability}`, so the same code also evaluates random play, $`V_\mu(x)=\sum_u \mu(u\mid x)\,W_\mu(M(x,u))`$:
+
+[src/dynamic_programming.py, lines 133-147](src/dynamic_programming.py#L133-L147): `evaluate_policy`
+
+```python
+V = {}
+for sigma in sorted(layers, reverse=True):
+    W = {}
+    for board in layers[sigma]:
+        moves = game.moves(board)
+        effect = {action: (after, points) for action, after, points in moves}
+        value = 0.0
+        for action, prob in policy(board, moves).items():
+            after, points = effect[action]
+            w = W.get(after)
+            if w is None:
+                w = W[after] = afterstate_value(game, after, V, objective)
+            value += prob * (w if r is None else w + r(board, after, points))
+        V[board] = value
+return V
+```
+
+The three rules of thumb (`moves` follows the order down, left, right, up):
+
+[src/dynamic_programming.py, lines 238-253](src/dynamic_programming.py#L238-L253): `corner_policy`, `greedy_policy`, `random_policy`
+
+```python
+def corner_policy(board, moves):
+    """Fixed priority down > left > right > up: the classic rule 'keep the
+    big tiles in the bottom-left corner'."""
+    return {moves[0][0]: 1.0} if moves else {}
+
+
+def greedy_policy(board, moves):
+    """Move with the largest immediate merge score (ties: ACTIONS order)."""
+    if not moves:
+        return {}
+    return {max(moves, key=lambda m: m[2])[0]: 1.0}
+
+
+def random_policy(board, moves):
+    """Uniformly random legal move."""
+    return {action: 1.0 / len(moves) for action, _, _ in moves}
+```
 
 ### Choosing the reward
 
@@ -152,9 +314,74 @@ The first part pays the value of the largest tile when the move creates a new la
 - **free cells:** the changes add up to $`-|E(x_0)|`$, because a lost game ends on a full board. It is a constant, so it cannot change the best policy (it shifts every value $`V(x)`$ by exactly $`-|E(x)|`$);
 - **new largest tile:** the bonuses add up to about twice the largest tile reached, a graded version of the win.
 
+**In the code.** `board` is $`x`$, `after` is $`y=M(x,u)`$ and `points` is $`r(x,u)`$. `milestone` is the first part, `2 + 2 * p4` the second, `free_change` the third; `naive_nofree` drops the third, to test that it changes no decision:
+
+[src/shaped_rewards.py, lines 36-71](src/shaped_rewards.py#L36-L71): `count_free`, `milestone`, `free_change`, `reward_fn`
+
+```python
+def count_free(board):
+    n = 0
+    for cell in board:
+        if cell == 0:
+            n += 1
+    return n
+
+
+def milestone(board, after):
+    if max(after) > max(board):
+        return 2 ** max(after)
+    return 0
+
+
+def free_change(board, after):
+    return count_free(after) - count_free(board) - 1
+
+
+def reward_fn(name, p4):
+    """Returns r(board, after, points) for 'score' or one of REWARDS."""
+    if name == 'score':
+        return lambda board, after, points: points
+    if name not in REWARDS:
+        raise ValueError('unknown reward: ' + repr(name))
+
+    def r(board, after, points):
+        value = 0.0
+        if name in ('naive', 'naive_nofree', 'sum'):
+            value += 2 + 2 * p4
+        if name in ('naive', 'naive_nofree', 'milestone'):
+            value += milestone(board, after)
+        if name in ('naive', 'free'):
+            value += free_change(board, after)
+        return value
+
+    return r
+```
+
 The exact DP confirms it on the 2x3 board: the optimal policy of the naive reward wins 0.9387 of the games, exactly as the score-optimal policy, against 0.9393 for the win-optimal one; with or without the free-cell part it picks the same move on all 68,340 boards. Trained with the naive reward, Sarsa on afterstates learns as fast as with the score (0.797 against 0.796 after 200,000 episodes). The naive reward works, but no better than the score, which the game provides and which has no weights to tune. We therefore use two rewards:
 - **win:** $`+1`$ for the move that creates the target (which ends the game), 0 for every other move. In RL the *return* of a game is the sum of the rewards collected until it ends, and the *value* $`v_\pi(x)`$ of a board is the expected return when the game continues from $`x`$ with the policy $`\pi`$. With this reward the return is 1 for a won game and 0 for a lost one, and the expected value of something that is either 1 or 0 is the probability that it is 1. So $`v_\pi(x)`$ is the win probability of $`\pi`$ from $`x`$, and the best value $`v_*(x)=\max_\pi v_\pi(x)`$ is the best win probability: exactly the $`V^*(x)`$ computed by the DP. The learners therefore aim at the very numbers of Part 1, which is why we can measure them exactly. This reward is the goal itself, but sparse: random play wins 2 games in 10,000 on the 2x3 board.
 - **score:** the points $`r(x,u)`$ of each move. The return is the points scored from the board $`x`$ to the end of the game (the whole score, for a game counted from its start), so $`v_*`$ is the $`V^*_{\text{score}}`$ of the DP. It is dense and almost aligned with the goal: the score-optimal policy makes the win-optimal move in 97.9% of the decisions.
+
+**In the code.** The simulator pays the reward of each move. With the win reward, a move that creates the target pays 1 and ends the game, and every other move pays 0 (`reward_fn` is `None`); with any other reward, `reward_fn` is the function above, and for the score it returns `points`. The reward is computed before the new tile appears, so it is exactly $`r(x,u)`$:
+
+[src/game.py, lines 226-240](src/game.py#L226-L240): `Env2048.step`
+
+```python
+def step(self, action):
+    """Returns (observation, reward, terminated, truncated, info)."""
+    after, points = self.game.afterstate(self.board, action)
+    if after == self.board:
+        raise ValueError(f'illegal action {action!r}')
+    if self.reward == 'win' and self.game.is_win(after):
+        self.board = after
+        return after, 1.0, True, False, {
+            'won': True, 'afterstate': after, 'legal_actions': []}
+    reward = (0.0 if self.reward_fn is None
+              else float(self.reward_fn(self.board, after, points)))
+    self.board = self.game.sample_spawn(after, self.rng)
+    legal = self.legal_actions()
+    return self.board, reward, not legal, False, {
+        'won': False, 'afterstate': after, 'legal_actions': legal}
+```
 
 Every policy is measured by its exact win probability, whatever reward it learned from.
 
@@ -176,18 +403,88 @@ G_{t:t+n}=R_{t+1}+\dots+R_{t+n}+V(S_{t+n}),\qquad V(S_t)\leftarrow V(S_t)+\alpha
 
 **Constant-α Monte Carlo** uses the full return of the game, $`G_t=R_{t+1}+R_{t+2}+\dots`$ up to the end of the game, as target: the limit $`n\to\infty`$.
 
-The error is the root mean square error against $`V^*`$, weighted by how often the policy visits each state. On this game the ranking of the textbook random walk is reversed at the start: Monte Carlo is faster than TD(0), because the only reward comes at the end of a 33-move game and TD(0) passes it back one state per visit. With a longer budget an intermediate $`n`$ wins (8-step TD).
+**In the code.** One function holds all three methods: $`n=1`$ is TD(0), and $`n`$ = `MC_N` (a million, longer than any game) is Monte Carlo. The episodes are stored one after the other: `states[a + j]` is $`S_j`$ and `rewards[a + j]` is $`R_{j+1}`$ of the current episode, which has `T` moves. For each time `tau` the loop adds up the $`n`$ rewards of $`G_{\tau:\tau+n}`$ and, if the game has not ended by then, adds $`V(S_{\tau+n})`$; near the end of the game the target is the plain return:
+
+[src/tabular_prediction.py, lines 121-136](src/tabular_prediction.py#L121-L136): `nstep_td`
+
+```python
+for e in range(n_ep):
+    a = starts[e]
+    T = starts[e + 1] - a
+    for tau in range(T):
+        end = min(tau + n, T)
+        G = 0.0
+        for j in range(tau, end):
+            G += rewards[a + j]
+        if tau + n < T:
+            G += V[states[a + tau + n]]
+        s = states[a + tau]
+        old = V[s]
+        new = old + alpha * (G - old)
+        se += mu[s] * ((new - v_true[s]) ** 2 - (old - v_true[s]) ** 2)
+        V[s] = new
+    rms[e + 1] = math.sqrt(max(se, 0.0))
+```
+
+The error is the root mean square error against $`V^*`$, weighted by how often the policy visits each state (the RMSE of [Exact learning curves](#exact-learning-curves), with `mu` the share of the visits that fall on each board). The function above keeps it up to date after every step (`se` is the sum under the square root); from scratch it is
+
+[src/tabular_prediction.py, lines 140-142](src/tabular_prediction.py#L140-L142): `rms_error`
+
+```python
+def rms_error(V, problem):
+    """sqrt(VE) of the estimates V, computed from scratch."""
+    return float(np.sqrt(np.sum(problem.mu * (V - problem.v_true) ** 2)))
+```
+
+On this game the ranking of the textbook random walk is reversed at the start: Monte Carlo is faster than TD(0), because the only reward comes at the end of a 33-move game and TD(0) passes it back one state per visit. With a longer budget an intermediate $`n`$ wins (8-step TD).
 
 ### Tabular control
 
 Six control methods of the course, each keeping a table of values and improving the policy as the values change. $`Q(S_t,A_t)`$ is the table's estimate of the value of playing $`A_t`$ on $`S_t`$: the expected return of that move and of the moves after it. All of them choose their moves ε-greedily: the move with the largest $`Q`$, except that with probability $`\epsilon`$ they play a random legal move (see [Exploration](#exploration)).
 
+**In the code.** The table `Q` maps a board to an array of four values, one per move, in the order down, left, right, up; `self.q(s)` is the row of the board `s`. Each method is the `episode` method of its class: `s, a, r` are $`S_t,A_t,R_{t+1}`$, and `s2, a2` are $`S_{t+1},A_{t+1}`$. At the end of the game the target is the reward alone, since there is no next move. The parameter $`\gamma`$ is `g` (always 1 here).
+
 **Monte Carlo control** (on-policy, first visit, ε-soft): after each game, $`Q(S_t,A_t)`$ moves to the average of the observed returns $`G_t`$. Since no state repeats within a game, first-visit and every-visit coincide.
+
+The returns are accumulated backwards from the end of the game, $`G_t=R_{t+1}+G_{t+1}`$. With `alpha=None` the step is $`1/N(S_t,A_t)`$, which keeps $`Q`$ equal to the average of the returns:
+
+[src/tabular_control.py, lines 306-316](src/tabular_control.py#L306-L316): `MCControl.episode`
+
+```python
+G = 0.0
+# states never repeat within an episode: every visit is a first visit
+for s, a, r in reversed(trajectory):
+    G = r + g * G
+    qs = self.q(s)
+    if alpha is None:
+        self.N[(s, a)] += 1
+        qs[a] += (G - qs[a]) / self.N[(s, a)]
+    else:
+        qs[a] += alpha * (G - qs[a])
+return G, info['won'], len(trajectory)
+```
 
 **Sarsa** (on-policy TD) uses the next move actually played:
 
 ```math
 Q(S_t,A_t)\leftarrow Q(S_t,A_t)+\alpha\big[R_{t+1}+Q(S_{t+1},A_{t+1})-Q(S_t,A_t)\big].
+```
+
+[src/tabular_control.py, lines 180-191](src/tabular_control.py#L180-L191): `Sarsa.episode`
+
+```python
+while True:
+    s2, r, done, _, info = env.step(ACTIONS[a])
+    G += r
+    steps += 1
+    qs = self.q(s)
+    if done:
+        qs[a] += alpha * (r - qs[a])
+        return G, info['won'], steps
+    legal = _legal(info)
+    a2 = epsilon_greedy(self.q(s2), legal, eps, rng)
+    qs[a] += alpha * (r + g * self.Q[s2][a2] - qs[a])
+    s, a = s2, a2
 ```
 
 **Q-learning** (off-policy TD) uses the best next move, so it learns the optimal values $`q_*`$ (the value of each move when the best policy plays afterwards) whatever the exploration:
@@ -196,13 +493,82 @@ Q(S_t,A_t)\leftarrow Q(S_t,A_t)+\alpha\big[R_{t+1}+Q(S_{t+1},A_{t+1})-Q(S_t,A_t)
 Q(S_t,A_t)\leftarrow Q(S_t,A_t)+\alpha\big[R_{t+1}+\max_a Q(S_{t+1},a)-Q(S_t,A_t)\big].
 ```
 
+The maximum runs over the legal moves of $`S_{t+1}`$ only:
+
+[src/tabular_control.py, lines 202-214](src/tabular_control.py#L202-L214): `QLearning.episode`
+
+```python
+while True:
+    a = epsilon_greedy(self.q(s), legal, eps, rng)
+    s2, r, done, _, info = env.step(ACTIONS[a])
+    G += r
+    steps += 1
+    qs = self.q(s)
+    if done:
+        qs[a] += alpha * (r - qs[a])
+        return G, info['won'], steps
+    legal = _legal(info)
+    q2 = self.q(s2)
+    qs[a] += alpha * (r + g * max(q2[b] for b in legal) - qs[a])
+    s = s2
+```
+
 **Expected Sarsa** uses the average over the next moves of the ε-greedy policy ($`\pi(a\mid S_{t+1})`$ is the probability that the policy plays $`a`$ on $`S_{t+1}`$), a target with less variance than Sarsa's:
 
 ```math
 Q(S_t,A_t)\leftarrow Q(S_t,A_t)+\alpha\Big[R_{t+1}+\sum_a \pi(a\mid S_{t+1})\,Q(S_{t+1},a)-Q(S_t,A_t)\Big].
 ```
 
-**n-step Sarsa** ($`n=3`$) is Sarsa with the target $`R_{t+1}+R_{t+2}+R_{t+3}+Q(S_{t+3},A_{t+3})`$.
+`expect` is the sum over the legal moves $`a`$ of $`\pi(a\mid S_{t+1})\,Q(S_{t+1},a)`$:
+
+[src/tabular_control.py, lines 225-239](src/tabular_control.py#L225-L239): `ExpectedSarsa.episode`
+
+```python
+while True:
+    a = epsilon_greedy(self.q(s), legal, eps, rng)
+    s2, r, done, _, info = env.step(ACTIONS[a])
+    G += r
+    steps += 1
+    qs = self.q(s)
+    if done:
+        qs[a] += alpha * (r - qs[a])
+        return G, info['won'], steps
+    legal = _legal(info)
+    q2 = self.q(s2)
+    expect = sum(p * q2[b] for b, p in
+                 epsilon_greedy_probs(q2, legal, eps).items())
+    qs[a] += alpha * (r + g * expect - qs[a])
+    s = s2
+```
+
+The probabilities of the ε-greedy policy: $`\epsilon/|U(x)|`$ for every legal move, plus $`1-\epsilon`$ for the greedy one:
+
+[src/tabular_control.py, lines 102-107](src/tabular_control.py#L102-L107): `epsilon_greedy_probs`
+
+```python
+def epsilon_greedy_probs(q, legal, eps):
+    """{action: probability} of the epsilon-greedy policy on legal."""
+    base = eps / len(legal)
+    probs = {a: base for a in legal}
+    probs[greedy(q, legal)] += 1.0 - eps
+    return probs
+```
+
+**n-step Sarsa** ($`n=3`$) is Sarsa with the target $`R_{t+1}+R_{t+2}+R_{t+3}+Q(S_{t+3},A_{t+3})`$. The code follows the pseudocode of Sutton & Barto §7.2: at time `t` it updates the pair of time `tau` $`=t-n+1`$, whose $`n`$ rewards are now known; `G` is the target, without the last term when the game ends within $`n`$ moves:
+
+[src/tabular_control.py, lines 269-277](src/tabular_control.py#L269-L277): `NStepSarsa.episode`
+
+```python
+tau = t - n + 1
+if tau >= 0:
+    G = 0.0
+    for i in range(tau + 1, min(tau + n, T) + 1):
+        G += g ** (i - tau - 1) * rewards[i]
+    if tau + n < T:
+        G += g ** n * self.Q[states[tau + n]][actions[tau + n]]
+    qs = self.q(states[tau])
+    qs[actions[tau]] += alpha * (G - qs[actions[tau]])
+```
 
 **Sarsa on afterstates.** Two different moves from two different boards can lead to the same afterstate, and from there the future is the same. So we keep one value per afterstate and write the value of a move as
 
@@ -216,6 +582,37 @@ This is exact, not an approximation: the true value of a move depends on $`(x,u)
 V(Y_t)\leftarrow V(Y_t)+\alpha\big[r(S_{t+1},A_{t+1})+V(Y_{t+1})-V(Y_t)\big].
 ```
 
+**In the code.** The table `V` holds one value per afterstate, and the value of a move is $`Q(x,u)=r(x,u)+V(M(x,u))`$. With the win reward, a move that creates the target is worth 1, the only reward of the game:
+
+[src/tabular_control.py, lines 350-358](src/tabular_control.py#L350-L358): `AfterstateSarsa.action_values`
+
+```python
+def action_values(self, board, moves):
+    """{action name: r + V[afterstate]} over the legal moves."""
+    q = {}
+    for action, after, points in moves:
+        if self.win_mode:
+            q[action] = 1.0 if self.game.is_win(after) else self.v(after)
+        else:
+            q[action] = self.r(board, after, points) + self.gamma * self.v(after)
+    return q
+```
+
+The update: `after` is $`Y_t`$, the next move gives `after2` $`=Y_{t+1}`$ and `points2`, and the target is the value of that next move, $`r(S_{t+1},A_{t+1})+V(Y_{t+1})`$ (0 when the next board is game over, a few lines above):
+
+[src/tabular_control.py, lines 385-392](src/tabular_control.py#L385-L392): `AfterstateSarsa.episode`
+
+```python
+moves2 = self.game.moves(s2)
+action2, after2, points2 = self._choose(s2, moves2, eps, rng)
+if self.win_mode:
+    target = 1.0 if self.game.is_win(after2) else self.v(after2)
+else:
+    target = self.r(s2, after2, points2) + self.gamma * self.v(after2)
+self.V[after] = self.v(after) + alpha * (target - self.v(after))
+s, action, after = s2, action2, after2
+```
+
 Every update improves all the moves, from all the boards, that lead to the same afterstate, which is why this method learns fastest. The same update with a linear approximation of $`V`$ is the core of the strongest published 2048 players (Szubert & Jaśkowski 2014 and their successors).
 
 ### Exploration
@@ -223,6 +620,51 @@ Every update improves all the moves, from all the boards, that lead to the same 
 - **ε-greedy:** the agent plays a uniformly random legal move with probability $`\epsilon`$, and otherwise the move with the largest $`Q`$ (ties are broken in the order down, left, right, up, so an agent with all-zero values plays the corner rule).
 - **Optimistic initial values:** start every $`Q`$ at 1, the largest possible win probability. Every untried move looks promising until it has been tried, so the agent explores every move once and then follows the best. With the sparse win reward this removes the dead start of a learner that has never seen a win.
 - **Step-size and exploration schedules:** we compare constant α and ε with values that decrease linearly during training (ε from 0.3 to 0.01, α from 0.2 to 0.02), and try a grid of constant values.
+
+**In the code.** ε-greedy, with ties going to the first move in the order down, left, right, up (`legal` lists the legal moves in that order):
+
+[src/tabular_control.py, lines 87-99](src/tabular_control.py#L87-L99): `greedy`, `epsilon_greedy`
+
+```python
+def greedy(q, legal):
+    """First maximiser (in ACTIONS order) among the legal action indices."""
+    best, best_q = legal[0], q[legal[0]]
+    for a in legal[1:]:
+        if q[a] > best_q:
+            best, best_q = a, q[a]
+    return best
+
+
+def epsilon_greedy(q, legal, eps, rng):
+    if eps > 0.0 and rng.random() < eps:
+        return legal[rng.randrange(len(legal))]
+    return greedy(q, legal)
+```
+
+Optimistic initial values: a board met for the first time gets a row of four values equal to `q_init` (1 for optimism, 0 otherwise):
+
+[src/tabular_control.py, lines 132-136](src/tabular_control.py#L132-L136): `TabularAgent.q`
+
+```python
+def q(self, s):
+    row = self.Q.get(s)
+    if row is None:
+        row = self.Q[s] = np.full(4, self.q_init)
+    return row
+```
+
+The linear schedule, a function of the episode number `t`:
+
+[src/tabular_control.py, lines 61-66](src/tabular_control.py#L61-L66): `linear`
+
+```python
+def linear(start, end, n_episodes):
+    """Linear from start (episode 1) to end (episode n_episodes), then end."""
+    def f(t):
+        frac = min(1.0, (t - 1) / max(1, n_episodes - 1))
+        return start + (end - start) * frac
+    return f
+```
 
 ### Exact learning curves
 
@@ -240,6 +682,45 @@ Read it from the inside out: square each error, so that errors up and down do no
 
 Neither measurement uses random games, so the curves have no measurement noise: every change in them is a change in what the agent has learned.
 
+**In the code.** `ExactEvaluator.evaluate` runs the policy evaluation of Part 1 on the greedy policy, from the start of the game, for the win probability and the expected score. Then, on every board of the optimal player, it adds up the squared errors weighted by `visits`, the expected number of visits of the optimal player to the board (from `dp.occupancy`). Dividing by `seen`, the total weight of the boards the agent has met, turns these weights into the shares $`d(x)`$ that add up to 1:
+
+[src/tabular_control.py, lines 483-514](src/tabular_control.py#L483-L514): `ExactEvaluator.evaluate`
+
+```python
+out = {'p_win': dp.start_value(
+    g, dp.evaluate_policy(g, pi, 'win', self.layers_win))}
+if self.V_score is not None:
+    out['score'] = dp.start_value(
+        g, dp.evaluate_policy(g, pi, 'score', self.layers_score))
+refs = {'win': self.V_win, 'score': self.V_score,
+        **getattr(self, 'V_extra', {})}
+V_ref = refs.get(agent.reward)
+total = seen = agree = 0.0
+err_w = err = 0.0
+n_seen = 0
+for board, visits in self.mu.items():
+    moves = g.moves(board)
+    if not moves:
+        continue
+    total += visits
+    a = agent.greedy_action(board, moves)
+    if a is None:
+        continue
+    seen += visits
+    if a in self.optimal[board]:
+        agree += visits
+    if V_ref is not None:
+        d = agent.state_value(board, moves) - V_ref[board]
+        err_w += visits * d * d
+        err += d * d
+        n_seen += 1
+out['unseen'] = 1.0 - seen / total
+out['agree'] = agree / seen if seen else 0.0
+if V_ref is not None and n_seen:
+    out['rmse_w'] = math.sqrt(err_w / seen)
+    out['rmse'] = math.sqrt(err / n_seen)
+```
+
 ### Final test: deep Q-network
 
 Outside the methods of the course, the RL part ends with a deep Q-network built as in the PyTorch tutorial: Q-learning with a neural network $`Q(x,u;\theta)`$, trained on random minibatches of past transitions (experience replay) towards targets computed by a slowly updated copy of the network (target network $`\theta'`$):
@@ -248,7 +729,23 @@ Outside the methods of the course, the RL part ends with a deep Q-network built 
 \text{loss}=\text{Huber}\Big(r+\gamma\max_{u'}Q(x',u';\theta')-Q(x,u;\theta)\Big).
 ```
 
-Here $`(x,u,r,x')`$ is a stored transition (board, move, points, next board), $`\gamma<1`$ is a discount that weighs later rewards less, and the Huber loss is the squared error for small errors and the absolute error for large ones, so a few large errors do not dominate the gradient. The input is the one-hot encoding of the exponent of every cell; illegal moves are masked. It is tested on the 2x3 board, where it is evaluated exactly, and on the original 4x4 game. With the tutorial's schedule (one gradient step per move) it is slow: 2,314 points after 10,000 games of the 4x4 game, below the rules of thumb. Playing 1,024 games at once on a GPU, with a replay memory of a million moves (as in the original DQN), it reaches 0.871 of games won on 2x3 and 8,862 points on 4x4 after 100,000 games; with a convolutional network over the pairs of neighbouring cells, 17,485 points and the 2048 tile in 36% of the games. Neither curve is still rising at 100,000 games, and the n-tuple players of the literature, which are given the slide rule through the afterstates, stay far ahead (2048 in over 97% of the games).
+Here $`(x,u,r,x')`$ is a stored transition (board, move, points, next board), $`\gamma<1`$ is a discount that weighs later rewards less, and the Huber loss is the squared error for small errors and the absolute error for large ones, so a few large errors do not dominate the gradient. The input is the one-hot encoding of the exponent of every cell; illegal moves are masked.
+
+**In the code.** `s, a, r, s2` is a minibatch of transitions $`(x,u,r,x')`$; `m2` marks the legal moves of $`x'`$, so the maximum runs over them only, and `done` sets the target to $`r`$ alone when $`x'`$ is game over. `F.smooth_l1_loss` is PyTorch's Huber loss:
+
+[src/dqn_tutorial.py, lines 162-170](src/dqn_tutorial.py#L162-L170): `DQNAgent.optimize_model`
+
+```python
+s, a, r, s2, m2, done = self.memory.sample(BATCH_SIZE, self.rng, self.device)
+state_action_values = self.policy_net(s).gather(1, a[:, None])
+with torch.no_grad():
+    q2 = self.target_net(s2)
+    q2[~m2] = -float('inf')
+    next_values = q2.max(1).values
+    next_values[done] = 0.0
+expected = next_values * GAMMA + r
+loss = F.smooth_l1_loss(state_action_values, expected[:, None])
+``` It is tested on the 2x3 board, where it is evaluated exactly, and on the original 4x4 game. With the tutorial's schedule (one gradient step per move) it is slow: 2,314 points after 10,000 games of the 4x4 game, below the rules of thumb. Playing 1,024 games at once on a GPU, with a replay memory of a million moves (as in the original DQN), it reaches 0.871 of games won on 2x3 and 8,862 points on 4x4 after 100,000 games; with a convolutional network over the pairs of neighbouring cells, 17,485 points and the 2048 tile in 36% of the games. Neither curve is still rising at 100,000 games, and the n-tuple players of the literature, which are given the slide rule through the afterstates, stay far ahead (2048 in over 97% of the games).
 
 ### Extra: Sarsa with n-tuple features
 
@@ -262,6 +759,43 @@ An n-tuple is a fixed group of $`n`$ cells, for example a row. For each of the $
 
 ```math
 w_m\big[\text{index}_m(Y_t)\big]\leftarrow w_m\big[\text{index}_m(Y_t)\big]+\frac{\alpha}{M}\big[r(S_{t+1},A_{t+1})+V(Y_{t+1};w)-V(Y_t;w)\big],\qquad m=1,\dots,M.
+```
+
+**In the code.** The board is a 64-bit integer with 4 bits per cell, and `fb.nibble(x, c)` reads the exponent of the cell `c`. Row `m` of `cells` lists the cells of tuple $`m`$; the loop over `j` packs their exponents into `idx`, which is $`\text{index}_m(y)`$, and `W[owner[m], idx]` is the weight $`w_m[\text{index}_m(y)]`$. Tuples that are rotations or reflections of each other share one table (`owner[m]`):
+
+[src/ntuple_network.py, lines 155-172](src/ntuple_network.py#L155-L172): `evaluate`, `update`
+
+```python
+@njit(cache=True)
+def evaluate(x, W, cells, owner):
+    v = 0.0
+    for m in range(cells.shape[0]):
+        idx = 0
+        for j in range(cells.shape[1]):
+            idx |= fb.nibble(x, cells[m, j]) << (4 * j)
+        v += W[owner[m], idx]
+    return v
+
+
+@njit(cache=True)
+def update(x, W, cells, owner, delta):
+    for m in range(cells.shape[0]):
+        idx = 0
+        for j in range(cells.shape[1]):
+            idx |= fb.nibble(x, cells[m, j]) << (4 * j)
+        W[owner[m], idx] += delta
+```
+
+The update, inside one game: `q2` is the value of the next move, $`r(S_{t+1},A_{t+1})+V(Y_{t+1};w)`$, and each of the $`M`$ weights of `after` $`=Y_t`$ moves by $`\alpha/M`$ times the error:
+
+[src/ntuple_network.py, lines 254-258](src/ntuple_network.py#L254-L258): `play_td`
+
+```python
+if learn:
+    target = q2 if a2 >= 0 else 0.0
+    # alpha is the step on V: every active weight moves by alpha / M
+    delta = alpha / cells.shape[0] * (target - evaluate(after, W, cells, owner))
+    update(after, W, cells, owner, delta)
 ```
 
 We ran it on the 2x3, 2x4 and 3x3 boards, where the DP measures every learned policy exactly, and on the 4x4 game, where it is the extra n-tuple player of the policy viewer. The code is in `src/ntuple_network.py`, the scripts under "Extra" in [Reproducing the results](#reproducing-the-results).

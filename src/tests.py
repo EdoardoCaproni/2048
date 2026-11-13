@@ -524,6 +524,32 @@ def test_fast_tabular():
     assert small.greedy_actions(some)[0] == agent.greedy_actions(some)[0]
 
 
+def test_readme_snippets():
+    # Every code snippet of the README comes after a line like
+    #   [src/game.py, lines 125-137](src/game.py#L125-L137): ...
+    # and must still be those lines of that file. If this fails, a module
+    # changed: copy the new code into the README or fix the line numbers.
+    import re
+    import textwrap
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    readme = (root / 'README.md').read_text(encoding='utf-8')
+    pattern = re.compile(r'^\[(src/\S+?\.py), lines (\d+)-(\d+)\]'
+                         r'\((src/\S+?\.py)#L(\d+)-L(\d+)\)[^\n]*\n\n'
+                         r'```python\n(.*?)\n```', re.M | re.S)
+    found = 0
+    for m in pattern.finditer(readme):
+        path, a, b, link, la, lb, code = m.groups()
+        where = f'README snippet {path} {a}-{b}'
+        assert (path, a, b) == (link, la, lb), where + ': text and link differ'
+        lines = (root / path).read_text(encoding='utf-8').split('\n')
+        expected = textwrap.dedent('\n'.join(lines[int(a) - 1:int(b)]))
+        assert code == expected.rstrip('\n'), where + ': the code has changed'
+        found += 1
+    assert found == readme.count('```python'), 'a snippet has no reference line'
+    assert found > 0
+
+
 if __name__ == '__main__':
     tests = [f for name, f in sorted(globals().items())
              if name.startswith('test_')]
