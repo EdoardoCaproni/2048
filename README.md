@@ -83,7 +83,19 @@ V^*(x)=\begin{cases}0 & \text{if } U(x)=\emptyset,\\ \max_{u\in U(x)} W^*\big(M(
 W^*(y)=\begin{cases}1 & \text{if } \max_i y_i=K,\\ \displaystyle\sum_{i\in E(y)}\frac{1}{|E(y)|}\Big[(1-p_4)\,V^*(y+e_i)+p_4\,V^*(y+2e_i)\Big] & \text{otherwise.}\end{cases}
 ```
 
-In words: the player picks the move whose afterstate is worth most, and a board with no legal move is lost. An afterstate holding the target ($`\max_i y_i=K`$: the largest exponent on the board is $`K`$, the tile $`2^K`$) is a win. Otherwise the new tile goes to each of the $`|E(y)|`$ empty cells with probability $`1/|E(y)|`$, and is a 2 (exponent 1, board $`y+e_i`$) with probability $`1-p_4`$ or a 4 (exponent 2, board $`y+2e_i`$) with probability $`p_4`$; $`W^*(y)`$ is the average of $`V^*`$ over these boards, each weighted by its probability. For the expected score, $`V`$ and $`W`$ are expected points instead of win probabilities: the move is chosen by $`\max_u [r(x,u)+W(M(x,u))]`$, which adds the points of the move, and the game goes on past the target.
+In words: the player picks the move whose afterstate is worth most, and a board with no legal move is lost. An afterstate holding the target ($`\max_i y_i=K`$: the largest exponent on the board is $`K`$, the tile $`2^K`$) is a win. Otherwise the new tile goes to each of the $`|E(y)|`$ empty cells with probability $`1/|E(y)|`$, and is a 2 (exponent 1, board $`y+e_i`$) with probability $`1-p_4`$ or a 4 (exponent 2, board $`y+2e_i`$) with probability $`p_4`$; $`W^*(y)`$ is the average of $`V^*`$ over these boards, each weighted by its probability.
+
+**Bellman equation for the expected score.** The same two steps, with values that count points instead of probabilities: $`V^*_{\text{score}}(x)`$ is the largest expected number of points still to come from the board $`x`$, before the move, and $`W^*_{\text{score}}(y)`$ the same from the afterstate $`y`$, before the new tile:
+
+```math
+V^*_{\text{score}}(x)=\begin{cases}0 & \text{if } U(x)=\emptyset,\\ \max_{u\in U(x)} \Big[r(x,u)+W^*_{\text{score}}\big(M(x,u)\big)\Big] & \text{otherwise,}\end{cases}
+```
+
+```math
+W^*_{\text{score}}(y)=\sum_{i\in E(y)}\frac{1}{|E(y)|}\Big[(1-p_4)\,V^*_{\text{score}}(y+e_i)+p_4\,V^*_{\text{score}}(y+2e_i)\Big].
+```
+
+Two things change. The player now picks the move with the most points now plus the most expected points later, $`r(x,u)+W^*_{\text{score}}`$, instead of the move with the best afterstate alone. And the case "the afterstate holds the target" is gone: creating the target does not end the game, which goes on until no legal move is left. A game over still gives 0, because no more points can be made. The tile sum is still a clock, so the same backward pass solves this equation too.
 
 **The key property: the tile sum is a clock.** Let $`\sigma(x)=\sum_{i:x_i>0}2^{x_i}`$ be the sum of the tiles. A slide never changes it (a merge turns $`2^k+2^k`$ into $`2^{k+1}`$), and the new tile adds 2 or 4:
 
