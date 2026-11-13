@@ -104,7 +104,7 @@ Two things change. The player now picks the move with the most points now plus t
 ```
 
 Consequences:
-- no board is visited twice in a game, and every game ends within $`RC\cdot2^{K-2}`$ moves, whatever the policy. So every policy is proper (it ends the game for sure), and the Bellman equation has a unique solution (the total-cost assumptions of the course hold);
+- no board is visited twice in a game, and every game ends within $`RC\cdot2^{K-2}`$ moves, whatever the policy. So every policy is proper (it ends the game for sure), and the Bellman equation has a unique solution;
 - grouping the boards by tile sum into stages $`X_\sigma`$, every move goes from $`X_\sigma`$ to $`X_{\sigma+2}`$ or $`X_{\sigma+4}`$: the problem can be solved by a single backward pass, like a finite-horizon problem.
 
 ## Methods
