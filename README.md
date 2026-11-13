@@ -226,13 +226,19 @@ Every update improves all the moves, from all the boards, that lead to the same 
 
 ### Exact learning curves
 
-On the small boards the DP solution turns every learning curve into an exact measurement. At regular checkpoints the greedy policy of the agent is evaluated exactly by policy evaluation (win probability and expected score), and the learned values are compared with $`V^*`$:
+This is how every RL result on the small boards is measured. A learning curve shows how good an agent is as its training goes on. It is usually drawn by stopping every so often, letting the agent play some test games and averaging their results, so the curve is noisy: a lucky batch of test games looks like progress. On the small boards no test games are needed, because the DP evaluates any policy exactly. So at regular checkpoints we take the agent's greedy policy (on every board the move with the largest $`Q`$, without the random moves of exploration) and measure two things exactly.
+
+**How well it plays:** the win probability and the expected score of the greedy policy, computed by the policy evaluation above. These are the numbers in the tables of results.
+
+**How well it knows the values:** on a board $`x`$ the agent's estimate of the value is its best move value, $`\hat V(x)=\max_u Q(x,u)`$ (the hat marks an estimate), and the true value is the $`V^*(x)`$ of the DP ($`V^*_{\text{score}}(x)`$ for an agent trained on the score). The errors $`\hat V(x)-V^*(x)`$ on all the boards are summarised in one number, a weighted root mean square error:
 
 ```math
-\text{RMSE}=\sqrt{\sum_x \eta^*(x)\big(\hat V(x)-V^*(x)\big)^2\Big/\sum_x \eta^*(x)},
+\text{RMSE}=\sqrt{\sum_x d(x)\,\big(\hat V(x)-V^*(x)\big)^2}.
 ```
 
-where $`\hat V(x)`$ is the value learned by the agent and $`\eta^*(x)`$ is the expected number of visits of board $`x`$ in a game of the optimal policy (computed by a forward pass), so the boards that matter more in play weigh more. The curves have no Monte Carlo noise: all their variation comes from learning.
+Read it from the inside out: square each error, so that errors up and down do not cancel; average the squares over the boards, each board $`x`$ with weight $`d(x)`$; take the square root, to come back to the units of the values. An RMSE of 0.02 on the win probability means estimates off by about 2 percentage points. The weight $`d(x)`$ is the share of the optimal player's decisions taken on the board $`x`$ (computed exactly with the DP), and the weights add up to 1. Most boards are almost never reached by a good player, and an error there costs nothing in play; the weights make the error count where the game is actually played. The sum runs over the boards the agent has met, since it has no estimate for the others.
+
+Neither measurement uses random games, so the curves have no measurement noise: every change in them is a change in what the agent has learned.
 
 ### Final test: deep Q-network
 
