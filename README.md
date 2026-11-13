@@ -37,34 +37,11 @@ The board has $`R\times C`$ cells and the target tile is $`2^K`$ (the original g
 
 ## Problem formulation
 
-We use the notation of the DP part of the course (Bertsekas): state $`x`$, control $`u`$, disturbance $`w`$, dynamics $`x_{t+1}=f(x_t,u_t,w_t)`$. The RL part switches to the notation of Sutton & Barto, as the course does. The symbols, all defined again where they first appear:
+We use the notation of the DP part of the course (Bertsekas): state $`x`$, control $`u`$, disturbance $`w`$, dynamics $`x_{t+1}=f(x_t,u_t,w_t)`$. The RL part switches to the notation of Sutton & Barto, as the course does. Every symbol is explained where it first appears.
 
-| Symbol | Meaning |
-|---|---|
-| $`R\times C`$, $`2^K`$, $`p_4`$ | board size, target tile, probability that a new tile is a 4 |
-| $`x`$, $`x_t`$ | board (state) before a move: the exponents of the tiles, 0 for an empty cell; $`t`$ counts the moves |
-| $`u`$, $`U(x)`$ | move (control) and set of legal moves of $`x`$ |
-| $`y=M(x,u)`$ | afterstate: the board after the slide and merges, before the new tile |
-| $`r(x,u)`$ | points of the move (sum of the tiles created by merges) |
-| $`w=(i,v)`$, $`E(y)`$, $`\lvert E(y)\rvert`$ | new tile (cell, exponent); set of empty cells of $`y`$; their number |
-| $`e_i`$ | the board with a 1 in cell $`i`$ and 0 elsewhere, so $`y+v\,e_i`$ is $`y`$ with exponent $`v`$ in cell $`i`$ |
-| $`\sigma(x)`$, $`X_\sigma`$ | sum of the tiles; the boards with tile sum $`\sigma`$ (a "stage") |
-| $`\mu`$, $`\pi`$ | policy, the rule that picks the move ($`\mu`$ in DP notation, $`\pi`$ in RL notation) |
-| $`P^{\pi}(\cdot)`$ | probability of an event when the moves are chosen by $`\pi`$ (the new tiles are random as always) |
-| $`V^*(x)`$, $`W^*(y)`$ | optimal value of a board and of an afterstate (see the Bellman equation) |
-| $`V_\mu`$, $`W_\mu`$ | the same values for a fixed policy $`\mu`$ instead of the best one |
-| $`S_t`$, $`A_t`$, $`R_{t+1}`$ | RL notation: board, move and reward of step $`t`$ (the reward of move $`A_t`$ is called $`R_{t+1}`$) |
-| $`G_t`$ | return: the sum of the rewards from step $`t`$ to the end of the game |
-| $`v_\pi`$, $`q_\pi`$; $`v_*`$, $`q_*`$ | true value of a state and of a (state, move) pair under $`\pi`$; the same for the best policy |
-| $`V`$, $`Q`$ | the learner's estimates (tables) of these values |
-| $`\alpha`$, $`\epsilon`$, $`\gamma`$ | step size, exploration rate, discount ($`\gamma=1`$ throughout: no discount, except in the DQN) |
-| $`\mathbf 1[\cdot]`$ | 1 if the condition in brackets holds, 0 otherwise |
+**State.** A board is stored as the exponents of its tiles, cell by cell: $`x=(x_1,\dots,x_{RC})`$, with $`x_i=0`$ for an empty cell and $`x_i=k`$ for the tile $`2^k`$. The index $`t=0,1,2,\dots`$ counts the moves, and the state $`x_t`$ is the board the player sees before move $`t`$, after the random tile.
 
-Conventions: a star ($`V^*`$, $`v_*`$) means "optimal", that is with the best policy; a subscript $`\mu`$ or $`\pi`$ means "following that policy"; a superscript in brackets ($`V^{(i)}`$) is an iteration number.
-
-**State.** A board is stored as the exponents of its tiles, cell by cell: $`x=(x_1,\dots,x_{RC})`$, with $`x_i=0`$ for an empty cell and $`x_i=k`$ for the tile $`2^k`$. The state $`x_t`$ is the board the player sees before move $`t`$, after the random tile.
-
-**Control.** The legal moves, the ones that change the board:
+**Control.** The control $`u`$ is the move. $`U(x)`$ is the set of legal moves of the board $`x`$, the ones that change it:
 
 ```math
 U(x)=\{u\in\{\text{down},\text{left},\text{right},\text{up}\} : M(x,u)\neq x\}.
@@ -74,9 +51,9 @@ The game is over exactly when $`U(x)`$ is empty.
 
 **Afterstate (deterministic part of a move).** $`y=M(x,u)`$ is the board after the slide and the merges, before the new tile. It is the part of the next board that the player controls. The points of the move, $`r(x,u)`$, are the sum of the tiles created by merges.
 
-**Disturbance (random part of a move).** $`w_t=(i_t,v_t)`$: the cell $`i_t`$ of the new tile, uniform over the empty cells $`E(y_t)`$ of the afterstate, and its exponent $`v_t`$, equal to 1 (a 2) with probability $`1-p_4`$ and 2 (a 4) with probability $`p_4`$. Given the afterstate, the new tile does not depend on anything else.
+**Disturbance (random part of a move).** $`w_t=(i_t,v_t)`$: the cell $`i_t`$ of the new tile, uniform over the set $`E(y_t)`$ of the empty cells of the afterstate (there are $`|E(y_t)|`$ of them), and its exponent $`v_t`$, equal to 1 (a 2) with probability $`1-p_4`$ and 2 (a 4) with probability $`p_4`$. Given the afterstate, the new tile does not depend on anything else.
 
-**Dynamics.** Slide, then add the random tile ($`y+v\,e_i`$ is the board $`y`$ with exponent $`v`$ placed in cell $`i`$):
+**Dynamics.** Slide, then add the random tile. Here $`e_i`$ is the board with a 1 in cell $`i`$ and 0 elsewhere, so $`y+v\,e_i`$ is the board $`y`$ with the exponent $`v`$ placed in the empty cell $`i`$:
 
 ```math
 x_{t+1}=f(x_t,u_t,w_t)=M(x_t,u_t)+v_t\,e_{i_t}.
@@ -88,7 +65,7 @@ x_{t+1}=f(x_t,u_t,w_t)=M(x_t,u_t)+v_t\,e_{i_t}.
 V^*(x)=\max_{\pi}\ P^{\pi}\left(\text{the target tile is created}\mid x_0=x\right).
 ```
 
-Read it from the inside out. $`P^{\pi}(\dots\mid x_0=x)`$ is the probability of winning when the game starts from the board $`x`$ and the player chooses every move with the policy $`\pi`$: the moves follow the rule, the new tiles are random, and the probability is taken over the new tiles. The maximum is over all the policies, so $`V^*(x)`$ is the win probability of the best possible player starting from $`x`$.
+Read it from the inside out. A policy $`\pi`$ is a rule that picks the move on every board. $`P^{\pi}(\dots\mid x_0=x)`$ is the probability of winning when the game starts from the board $`x`$ and the player chooses every move with the policy $`\pi`$: the moves follow the rule, the new tiles are random, and the probability is taken over the new tiles. The maximum is over all the policies, so $`V^*(x)`$ is the win probability of the best possible player starting from $`x`$. Throughout, a star marks a value of the best policy ("optimal").
 
 In the cost form of the course this is a problem with no cost per stage and a terminal cost of 1 for a lost game and 0 for a won game; the optimal cost is $`J^*=1-V^*`$, the smallest probability of losing. For comparison we also study the expected score, with the points $`r(x,u)`$ as the reward of each stage.
 
@@ -135,11 +112,11 @@ The algorithm of the course for total-cost problems: start from $`V^{(0)}=0`$ an
 V^{(i+1)}(x)=\max_{u\in U(x)} W^{(i)}\big(M(x,u)\big),
 ```
 
-where $`W^{(i)}`$ is the afterstate equation computed with $`V^{(i)}`$. Started from zero, $`V^{(i)}(x)`$ is the best probability of winning within $`i`$ moves. Since every game is bounded, value iteration is exact after finitely many iterations (46 on the 2x3 board with target 64), not only in the limit. The backward pass above is the same iteration with the states updated in place (Gauss-Seidel) in decreasing tile sum: its first sweep already gives $`V^*`$.
+where the superscript $`(i)`$ is the iteration number and $`W^{(i)}`$ is the afterstate equation computed with $`V^{(i)}`$. Started from zero, $`V^{(i)}(x)`$ is the best probability of winning within $`i`$ moves. Since every game is bounded, value iteration is exact after finitely many iterations (46 on the 2x3 board with target 64), not only in the limit. The backward pass above is the same iteration with the states updated in place (Gauss-Seidel) in decreasing tile sum: its first sweep already gives $`V^*`$.
 
 ### Policy evaluation and benchmark policies
 
-Replacing the maximisation with the move chosen by a fixed policy $`\mu`$ gives the exact value of that policy, with the same backward pass:
+Replacing the maximisation with the move chosen by a fixed policy $`\mu`$ (the DP part of the course writes $`\mu`$ for a policy; the RL part writes $`\pi`$) gives the exact value of that policy, with the same backward pass:
 
 ```math
 V_\mu(x)=W_\mu\big(M(x,\mu(x))\big).
@@ -163,16 +140,16 @@ The first part pays the value of the largest tile when the move creates a new la
 - **new largest tile:** the bonuses add up to about twice the largest tile reached, a graded version of the win.
 
 The exact DP confirms it on the 2x3 board: the optimal policy of the naive reward wins 0.9387 of the games, exactly as the score-optimal policy, against 0.9393 for the win-optimal one; with or without the free-cell part it picks the same move on all 68,340 boards. Trained with the naive reward, Sarsa on afterstates learns as fast as with the score (0.797 against 0.796 after 200,000 episodes). The naive reward works, but no better than the score, which the game provides and which has no weights to tune. We therefore use two rewards:
-- **win:** $`+1`$ when a move creates the target (the episode ends), 0 otherwise. The value of a state is its win probability, so $`v_*=V^*`$. It is the goal itself, but sparse: random play wins 2 games in 10,000 on the 2x3 board.
+- **win:** $`+1`$ when a move creates the target (the episode ends), 0 otherwise. The value of a state is its win probability, so the optimal value $`v_*`$ of the RL part (Sutton's name for it) is the $`V^*`$ of the DP. It is the goal itself, but sparse: random play wins 2 games in 10,000 on the 2x3 board.
 - **score:** the points $`r(x,u)`$ of each move. It is dense and almost aligned with the goal: the score-optimal policy makes the win-optimal move in 97.9% of the decisions.
 
 Every policy is measured by its exact win probability, whatever reward it learned from.
 
 ### Prediction: TD(0), n-step TD, Monte Carlo
 
-From here on we use the RL notation: $`S_t`$ is the board before move $`t`$ (the $`x_t`$ of Part 1), $`A_t`$ the move played, $`R_{t+1}`$ its reward, and an episode is one game. Prediction estimates the value $`v_\pi`$ of a fixed policy $`\pi`$ (the expected return from each board) from its episodes alone. We take the optimal policy and the win reward, so the true answer $`v_\pi=V^*`$ is known exactly. All methods use a constant step size $`\alpha`$ (how far each update moves the estimate) and $`\gamma=1`$ (no discount).
+From here on we use the RL notation: $`S_t`$ is the board before move $`t`$ (the $`x_t`$ of Part 1), $`A_t`$ the move played, $`R_{t+1}`$ its reward (the index is $`t+1`$ because the reward arrives with the next board), and an episode is one game. Prediction estimates the value $`v_\pi`$ of a fixed policy $`\pi`$ (the expected return from each board) from its episodes alone. We take the optimal policy and the win reward, so the true answer $`v_\pi=V^*`$ is known exactly. All methods use a constant step size $`\alpha`$ (how far each update moves the estimate) and $`\gamma=1`$ (no discount).
 
-**TD(0)** moves the estimate of a state towards the reward plus the estimate of the next state:
+**TD(0)** keeps a table $`V`$ of estimates, one per board, and moves the estimate of a state towards the reward plus the estimate of the next state:
 
 ```math
 V(S_t)\leftarrow V(S_t)+\alpha\big[R_{t+1}+V(S_{t+1})-V(S_t)\big].
@@ -190,7 +167,7 @@ The error is the root mean square error against $`V^*`$, weighted by how often t
 
 ### Tabular control
 
-Six control methods of the course, each keeping a table of values and improving the policy as the values change. $`Q(S_t,A_t)`$ is the table's estimate of the value of playing $`A_t`$ on $`S_t`$: the expected return of that move and of the moves after it.
+Six control methods of the course, each keeping a table of values and improving the policy as the values change. $`Q(S_t,A_t)`$ is the table's estimate of the value of playing $`A_t`$ on $`S_t`$: the expected return of that move and of the moves after it. All of them choose their moves ε-greedily: the move with the largest $`Q`$, except that with probability $`\epsilon`$ they play a random legal move (see [Exploration](#exploration)).
 
 **Monte Carlo control** (on-policy, first visit, ε-soft): after each game, $`Q(S_t,A_t)`$ moves to the average of the observed returns $`G_t`$. Since no state repeats within a game, first-visit and every-visit coincide.
 
@@ -200,7 +177,7 @@ Six control methods of the course, each keeping a table of values and improving 
 Q(S_t,A_t)\leftarrow Q(S_t,A_t)+\alpha\big[R_{t+1}+Q(S_{t+1},A_{t+1})-Q(S_t,A_t)\big].
 ```
 
-**Q-learning** (off-policy TD) uses the best next move, so it learns the optimal values $`q_*`$ whatever the exploration:
+**Q-learning** (off-policy TD) uses the best next move, so it learns the optimal values $`q_*`$ (the value of each move when the best policy plays afterwards) whatever the exploration:
 
 ```math
 Q(S_t,A_t)\leftarrow Q(S_t,A_t)+\alpha\big[R_{t+1}+\max_a Q(S_{t+1},a)-Q(S_t,A_t)\big].
@@ -252,7 +229,7 @@ Outside the methods of the course, the RL part ends with a deep Q-network built 
 \text{loss}=\text{Huber}\Big(r+\gamma\max_{u'}Q(x',u';\theta')-Q(x,u;\theta)\Big).
 ```
 
-Here $`(x,u,r,x')`$ is a stored transition (board, move, points, next board) and the Huber loss is the squared error for small errors and the absolute error for large ones, so a few large errors do not dominate the gradient. The input is the one-hot encoding of the exponent of every cell; illegal moves are masked. It is tested on the 2x3 board, where it is evaluated exactly, and on the original 4x4 game. With the tutorial's schedule (one gradient step per move) it is slow: 2,314 points after 10,000 games of the 4x4 game, below the rules of thumb. Playing 1,024 games at once on a GPU, with a replay memory of a million moves (as in the original DQN), it reaches 0.871 of games won on 2x3 and 8,862 points on 4x4 after 100,000 games; with a convolutional network over the pairs of neighbouring cells, 17,485 points and the 2048 tile in 36% of the games. Neither curve is still rising at 100,000 games, and the n-tuple players of the literature, which are given the slide rule through the afterstates, stay far ahead (2048 in over 97% of the games).
+Here $`(x,u,r,x')`$ is a stored transition (board, move, points, next board), $`\gamma<1`$ is a discount that weighs later rewards less, and the Huber loss is the squared error for small errors and the absolute error for large ones, so a few large errors do not dominate the gradient. The input is the one-hot encoding of the exponent of every cell; illegal moves are masked. It is tested on the 2x3 board, where it is evaluated exactly, and on the original 4x4 game. With the tutorial's schedule (one gradient step per move) it is slow: 2,314 points after 10,000 games of the 4x4 game, below the rules of thumb. Playing 1,024 games at once on a GPU, with a replay memory of a million moves (as in the original DQN), it reaches 0.871 of games won on 2x3 and 8,862 points on 4x4 after 100,000 games; with a convolutional network over the pairs of neighbouring cells, 17,485 points and the 2048 tile in 36% of the games. Neither curve is still rising at 100,000 games, and the n-tuple players of the literature, which are given the slide rule through the afterstates, stay far ahead (2048 in over 97% of the games).
 
 ## Main results
 
