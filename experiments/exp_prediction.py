@@ -11,7 +11,7 @@ policy (Sec. 9.2). Outputs in results/prediction/:
     sweep.csv               mean error over the first episodes vs alpha, n
     fig_pred_curves.png     error vs episodes (TD(0), 4-step TD, MC)
     fig_pred_nstep.png      average error vs alpha, one line per n
-    summary.json            numbers quoted in the report
+    summary.json            numbers quoted in the README
 Run from the project root:  python experiments/exp_prediction.py [quick]
 """
 import sys

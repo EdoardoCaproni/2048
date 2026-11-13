@@ -13,7 +13,7 @@ them. The values are stored in single precision to save memory.
 
 A board never met in training has no entry: the greedy policy plays there the
 first legal move in the order down, left, right, up (the corner rule), as in
-the exact evaluation of the report. For Sarsa on afterstates a board counts
+the exact evaluation of tabular_control.py. For Sarsa on afterstates a board counts
 as known if at least one of its afterstates has a value.
 """
 import json
@@ -239,7 +239,7 @@ def _episode_nstep(n, rows, cols, p4, alpha, eps, q_init, keys, vals, visits, us
 def _episode_mc(rows, cols, p4, alpha, eps, q_init, keys, vals, N, visits, used, shift,
                 slots, acts, rs):
     """First-visit MC control (Sec. 5.4); alpha <= 0: sample averages of the
-    returns, as in the report."""
+    returns, as in all our runs."""
     s = fb.initial_board(rows, cols, p4)
     mask = fb.legal_mask(s, rows, cols)
     T = 0

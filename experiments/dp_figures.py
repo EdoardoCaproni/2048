@@ -1,5 +1,4 @@
-"""Figures and tables of the DP part as
-files for the report, in results/dp/:
+"""Figures and tables of the DP part, in results/dp/:
     fig_dp_stages.png        reachable states per stage, 2x3 board
     fig_dp_states.png        reachable states per board (log scale)
     fig_dp_length.png        game length under the optimal policy (MC)

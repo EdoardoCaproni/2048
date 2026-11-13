@@ -1,4 +1,4 @@
-"""The six tabular control methods of the report on the original 4x4 game
+"""The six tabular control methods on the original 4x4 game
 (tabular_control_fast.py: the algorithms of tabular_control.py with the table in a hash table),
 with the settings of the 2x3 runs: score reward, alpha = 0.1 (Monte Carlo
 control: sample averages), epsilon = 0.1, zero initial values, 200 000
@@ -112,20 +112,20 @@ def main():
         rl.ExactEvaluator.cached(Game2048(2, 3, target=64), RESULTS / 'dp_cache' / 'eval_2x3_64.pkl')
         rows = run_grid(check, [{'method': m, 'seed': s} for m in methods for s in seeds],
                         processes=12)
-        report = {}
+        original = {}
         with open(RESULTS / 'tabular' / 'summary.csv') as f:
             import csv
             for r in csv.DictReader(f):
                 if r['reward'] == 'score':
-                    report.setdefault(r['method'], []).append(float(r['p_win']))
+                    original.setdefault(r['method'], []).append(float(r['p_win']))
         for r in rows:
-            r['report_mean_p_win'] = float(np.mean(report[r['method']]))
+            r['original_mean_p_win'] = float(np.mean(original[r['method']]))
         save_csv(rows, out_dir('tabular_4x4') / 'port_check_2x3.csv',
-                 columns=['method', 'seed', 'p_win', 'report_mean_p_win', 'score', 'agree', 'entries'])
+                 columns=['method', 'seed', 'p_win', 'original_mean_p_win', 'score', 'agree', 'entries'])
         for m in methods:
             p = [r['p_win'] for r in rows if r['method'] == m]
             print(f'{m:17s} port {np.mean(p):.3f} (seeds: {", ".join(f"{x:.3f}" for x in p)}), '
-                  f'report {np.mean(report[m]):.3f}')
+                  f'original {np.mean(original[m]):.3f}')
         return
     episodes = int(opts.get('episodes', EPISODES))
     epsilons = [float(e) for e in opts['eps'].split(',')] if 'eps' in opts else [EPS]

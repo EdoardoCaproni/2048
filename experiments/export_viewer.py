@@ -1,5 +1,5 @@
 """Data for the policy viewer (viewer/index.html, also published as the
-project's GitHub page): the best policy found by every method of the report,
+project's GitHub page): the best policy found by every method of the project,
 exported as JavaScript files that the page loads. The tabular agents are
 retrained with the configuration and the seed of their best run (the
 training is deterministic, so these are the same agents); the DQN networks
@@ -14,8 +14,8 @@ rule, as in the exact evaluation), with its exact P(win) and expected score:
     results/tabular/summary.csv;
     DQN with the tutorial's schedule (results/dqn/) and on the GPU
     (results/dqn_gpu/): the seed with the largest exact P(win);
-    not in the report: semi-gradient Sarsa with n-tuple features (rows,
-    columns, squares).
+    extra, outside the methods of the course: semi-gradient Sarsa with
+    n-tuple features (rows, columns, squares).
 4x4 board, target 2048: the page computes the policies itself:
     corner, greedy and random rules;
     MC control, Sarsa, Expected Sarsa, Q-learning, 3-step Sarsa, Sarsa on
@@ -27,9 +27,9 @@ rule, as in the exact evaluation), with its exact P(win) and expected score:
     the GPU with the convolutional network: the seed with the largest final
     mean score; the weights are exported (the convolutional network, 2
     million weights, in half precision);
-    not in the report: semi-gradient Sarsa with 4-tuple features (rows,
-    columns, squares, alpha = 0.1, seed 0, 300 000 games), the approach of
-    the n-tuple players of the literature.
+    extra, outside the methods of the course: semi-gradient Sarsa with
+    4-tuple features (rows, columns, squares, alpha = 0.1, seed 0, 300 000
+    games), the approach of the n-tuple players of the literature.
 
 Outputs: viewer/data_2x3.js, viewer/data_4x4.js (the page loads the second
 one only when the 4x4 board is chosen); the retrained agents are cached in
@@ -56,7 +56,7 @@ CACHE = RESULTS / 'dp_cache' / 'eval_2x3_64.pkl'
 CHARS = 'dlru'  # ACTIONS order: down, left, right, up
 TAB_ALPHA = {'mc_control': None, 'sarsa': 0.1, 'q_learning': 0.1,
              'expected_sarsa': 0.1, 'nstep_sarsa': 0.1, 'afterstate_sarsa': 0.1}
-NT_SMALL = {  # name -> (tuples, symmetric, reward, init, seed); not in the report
+NT_SMALL = {  # name -> (tuples, symmetric, reward, init, seed); extra
     'ntuple_sarsa': ('rcs', True, 'win', 1.0, 2),
 }
 NT_4X4 = dict(tuples='rcs', alpha=0.1, seed=0, games=300_000)
@@ -65,7 +65,7 @@ GROUP_EXTRA = 'Extra'
 
 
 def num(n):
-    """Integer with spaces between the thousands, as in the report."""
+    """Integer with spaces between the thousands."""
     return f'{int(n):,}'.replace(',', ' ')
 
 
@@ -163,7 +163,7 @@ def best_tabular_runs():
                                          float(r['p_win']) > float(best[r['method']]['p_win'])):
             best[r['method']] = r
     return {m: dict(reward=r['reward'], q_init=float(r['q_init']), seed=int(r['seed']),
-                    report_p_win=float(r['p_win'])) for m, r in best.items()}
+                    best_p_win=float(r['p_win'])) for m, r in best.items()}
 
 
 # ----------------------------------------------------------------------
@@ -231,7 +231,7 @@ def export_2x3():
         a, _ = agent.greedy_batch(boards)
         acts = ''.join('-' if x < 0 else CHARS[x] for x in a)
         p_win, score = exact(dp.table_policy({b: ACTIONS[x] for b, x in zip(boards, a) if x >= 0}))
-        if abs(p_win - final['p_win']) > 1e-6:  # the same policy as in the report
+        if abs(p_win - final['p_win']) > 1e-6:  # the same policy as in final.json
             raise RuntimeError(f'{run}: exact P(win) {p_win} against {final["p_win"]} in final.json')
         games = final.get('games') or final['episode']
         add(pid, GROUP_DQN, label, acts, p_win, score,

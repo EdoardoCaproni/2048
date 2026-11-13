@@ -31,3 +31,4 @@ results/**/state.pt
 report/
 formulation/
 notes/
+experiments/collect_figures.py

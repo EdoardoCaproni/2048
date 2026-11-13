@@ -14,7 +14,7 @@ Options: scale=<s> divides the rewards by s instead of the target tile
 eval_every=<n>, device=cuda (the GPU; default cpu). A run longer than the
 default goes to results/dqn/<board>_e<n>_s<seed>/ and saves train.csv and
 model.pt at every evaluation, so a stopped run keeps its progress.
-e.g. the reward-scale check of the report:
+e.g. the same runs with other reward scales:
     python experiments/exp_dqn.py 4x4 scale=64 episodes=2000 seeds=0
     python experiments/exp_dqn.py 4x4 scale=256 episodes=2000 seeds=0
 and the longer training on the GPU:
