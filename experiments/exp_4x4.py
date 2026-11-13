@@ -18,7 +18,7 @@ import numpy as np
 
 from common import out_dir, run_grid, save_json
 
-import ntuple2048 as nt
+import ntuple_network as nt
 
 N_GAMES = 300_000
 CHECKPOINTS = (1_000, 3_000, 10_000, 30_000, 100_000, 200_000, 300_000, 500_000, 700_000, 1_000_000)

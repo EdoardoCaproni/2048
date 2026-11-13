@@ -8,8 +8,8 @@ import time
 
 from common import RESULTS, save_json  # noqa: F401 (sets sys.path)
 
-import fast2048 as fb
-from game2048 import Game2048
+import game_fast as fb
+from game import Game2048
 
 
 def bench_python(rows, cols, target, n_games):

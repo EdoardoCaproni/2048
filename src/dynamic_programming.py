@@ -12,7 +12,7 @@ Objectives
 'win'   : V(x) = maximum probability of creating the target tile from x.
 'score' : V(x) = maximum expected score (sum of the merged tiles) until the
           game is over; the target tile is ignored.
-Any reward named in shaping2048.REWARDS can be used in the same way as
+Any reward named in shaped_rewards.REWARDS can be used in the same way as
 'score' (stage reward r(x, u), no stop at the target).
 
 Policies are functions policy(board, moves) -> {action: probability}, where
@@ -23,7 +23,7 @@ import random
 import time
 from collections import defaultdict
 
-from shaping2048 import REWARDS, reward_fn
+from shaped_rewards import REWARDS, reward_fn
 
 OBJECTIVES = ('win', 'score') + tuple(REWARDS)
 # Relative tolerance that detects exact ties between actions (values equal up

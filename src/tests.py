@@ -1,12 +1,12 @@
 """Checks for the 2048 engine and the exact DP.
 
-Run from this folder with:  python test_2048.py
+Run from the project root with:  python src/tests.py
 """
 import random
 import time
 
-import dp2048 as dp
-from game2048 import ACTIONS, Env2048, Game2048, slide_line
+import dynamic_programming as dp
+from game import ACTIONS, Env2048, Game2048, slide_line
 
 
 def test_slide_line():
@@ -127,7 +127,7 @@ def test_score_objective():
 def test_shaped_rewards():
     """The free-cell term adds up to -free(x) over any game: it shifts every
     value by a constant per state and leaves the optimal policy unchanged."""
-    from shaping2048 import reward_fn
+    from shaped_rewards import reward_fn
     g = Game2048(2, 3, target=32)
     V0, table0, layers = dp.solve_optimal(g, 'naive_nofree')
     V1, table1, _ = dp.solve_optimal(g, 'naive', layers)
@@ -188,7 +188,7 @@ def test_env():
 def test_viz():
     import matplotlib
     matplotlib.use('Agg')  # no window
-    from viz2048 import animate, caption, play_episode
+    from visualize import animate, caption, play_episode
     g = Game2048(2, 3, target=32)
     V, table, _ = dp.solve_optimal(g)
     frames = play_episode(g, dp.table_policy(table), seed=0, V=V)
@@ -205,11 +205,11 @@ def test_viz():
 
 
 # ----------------------------------------------------------------------
-# fast2048: the bitboard engine must reproduce game2048 exactly
+# game_fast: the bitboard engine must reproduce game.py exactly
 # ----------------------------------------------------------------------
 def test_fast_tables():
     """Every row table entry agrees with slide_line."""
-    import fast2048 as fb
+    import game_fast as fb
     for w in (2, 3, 4):
         for row in range(65536):
             cells = [(row >> (4 * c)) & 0xF for c in range(4)]
@@ -230,7 +230,7 @@ def test_fast_tables():
 
 
 def test_fast_transpose():
-    import fast2048 as fb
+    import game_fast as fb
     rng = random.Random(0)
     for _ in range(2000):
         board = tuple(rng.randrange(16) for _ in range(16))
@@ -241,7 +241,7 @@ def test_fast_transpose():
 
 def test_fast_moves_match_game():
     """Random games: every move, legal set, terminal and win flag agree."""
-    import fast2048 as fb
+    import game_fast as fb
     rng = random.Random(7)
     for rows, cols, target in ((2, 3, 64), (2, 4, 64), (3, 3, 64),
                                (4, 4, 2048)):
@@ -281,7 +281,7 @@ def _check_frequencies(counts, expected, n):
 
 
 def test_fast_spawn_distribution():
-    import fast2048 as fb
+    import game_fast as fb
     from collections import Counter
     fb.seed(1)
     g = Game2048(2, 3, target=64, p4=0.1)
@@ -296,7 +296,7 @@ def test_fast_spawn_distribution():
 
 
 def test_fast_env_step():
-    import fast2048 as fb
+    import game_fast as fb
     fb.seed(2)
     rows, cols, K = 2, 3, 5  # target 32
     for mode in (0, 1):
@@ -334,7 +334,7 @@ def test_fast_env_step():
 
 def test_fast_random_play_matches_exact_values():
     """Random play on 2x3: win rate and mean score vs the exact values."""
-    import fast2048 as fb
+    import game_fast as fb
     fb.seed(3)
     n = 20000
     g = Game2048(2, 3, target=32)
@@ -349,10 +349,10 @@ def test_fast_random_play_matches_exact_values():
 
 
 # ----------------------------------------------------------------------
-# rl2048: tabular agents learn the 2x2 game from the simulator
+# tabular_control: tabular agents learn the 2x2 game from the simulator
 # ----------------------------------------------------------------------
 def test_tabular_rl_converges_on_2x2():
-    import rl2048 as rl
+    import tabular_control as rl
     g = Game2048(2, 2, target=16)
     ev = rl.ExactEvaluator(g)
     optimum = dp.start_value(g, ev.V_win)
@@ -375,7 +375,7 @@ def test_tabular_rl_converges_on_2x2():
 
 
 # ----------------------------------------------------------------------
-# dp2048: value iteration reaches the backward recursion exactly
+# dynamic_programming: value iteration reaches the backward recursion exactly
 # ----------------------------------------------------------------------
 def test_value_iteration_matches_backward_recursion():
     for r, c, target, objective in ((2, 2, 16, 'win'), (2, 2, 32, 'win'),
@@ -400,11 +400,11 @@ def test_value_iteration_matches_backward_recursion():
 
 
 # ----------------------------------------------------------------------
-# predict2048: TD(0), n-step TD and Monte Carlo estimate v_pi
+# tabular_prediction: TD(0), n-step TD and Monte Carlo estimate v_pi
 # ----------------------------------------------------------------------
 def test_prediction_converges_on_2x2():
     import numpy as np
-    import predict2048 as pr
+    import tabular_prediction as pr
     g = Game2048(2, 2, target=16)
     V, table, layers = dp.solve_optimal(g)
     prob = pr.Problem(g, table, layers=layers)
@@ -414,7 +414,7 @@ def test_prediction_converges_on_2x2():
     wins = R[starts[1:] - 1].mean()
     assert abs(wins - dp.start_value(g, V)) < 0.01, wins
     # the boards of the episodes are the boards of the DP
-    assert all(prob.codes[i] == __import__('fast2048').encode(prob.boards[i], 2, 2)
+    assert all(prob.codes[i] == __import__('game_fast').encode(prob.boards[i], 2, 2)
                for i in np.unique(S)[:50])
     for n, alpha in ((1, 0.1), (3, 0.1), (pr.MC_N, 0.05)):
         Vh, rms = pr.nstep_td(S, R, starts, n, alpha, 0.5, prob.v_true, prob.mu)
@@ -423,7 +423,7 @@ def test_prediction_converges_on_2x2():
 
 
 # ----------------------------------------------------------------------
-# dqn2048: the DQN of the final test runs and plays legal moves
+# dqn_tutorial: the DQN of the final test runs and plays legal moves
 # ----------------------------------------------------------------------
 def test_dqn_smoke():
     try:
@@ -432,8 +432,8 @@ def test_dqn_smoke():
         print('     (torch not installed: DQN test skipped)')
         return
     import numpy as np
-    import dqn2048 as dq
-    import rl2048 as rl
+    import dqn_tutorial as dq
+    import tabular_control as rl
     torch.set_num_threads(1)
     g = Game2048(2, 2, target=16)
     x = dq.encode([(1, 0, 3, 2)])
@@ -453,12 +453,12 @@ def test_dqn_smoke():
 
 
 # ----------------------------------------------------------------------
-# ntuple2048: semi-gradient Sarsa with n-tuple features learns the 2x3 game
+# ntuple_network: semi-gradient Sarsa with n-tuple features learns the 2x3 game
 # ----------------------------------------------------------------------
 def test_ntuple_small_board():
     import numpy as np
-    import ntuple2048 as nt
-    import rl2048 as rl
+    import ntuple_network as nt
+    import tabular_control as rl
     g = Game2048(2, 3, target=64)
     ev = rl.ExactEvaluator(g, with_score=False)
     optimum = dp.start_value(g, ev.V_win)
@@ -479,17 +479,17 @@ def test_ntuple_small_board():
     fresh = nt.NTupleNet(2, 3, 64, tuples='full', symmetric=False,
                          dtype=np.float64)
     assert fresh.greedy((5, 5, 0, 1, 0, 0), 'win') == ('left', 1.0)
-    frames = __import__('viz2048').play_episode(g, net.policy('win'), seed=0)
+    frames = __import__('visualize').play_episode(g, net.policy('win'), seed=0)
     assert frames[-1]['phase'] in ('won', 'lost')
 
 
 def test_fast_tabular():
-    """rlfast2048: the six tabular methods on the bitboard engine learn on
+    """tabular_control_fast: the six tabular methods on the bitboard engine learn on
     2x3 as the reference code does (exact P(win) of the greedy policy, score
     reward, a table that starts small and doubles several times), and a
     table restricted to its most visited boards plays the same moves there."""
-    import rl2048 as rl
-    import rlfast2048 as rf
+    import tabular_control as rl
+    import tabular_control_fast as rf
     g = Game2048(2, 3, target=64)
     ev = rl.ExactEvaluator(g, with_score=False)
     boards = [b for layer in ev.layers_win.values() for b in layer]
@@ -519,7 +519,7 @@ def test_fast_tabular():
     assert 0.0 < res['unseen'] < 1.0 and res['score'] > 0, res
     keys, vals, visits = agent.most_visited(1000)
     small = rf.FastTabular.from_entries(agent.config(), keys, vals, visits)
-    import fast2048 as fb
+    import game_fast as fb
     some = [fb.decode(k, 4, 4) for k in keys[:200]]
     assert small.greedy_actions(some)[0] == agent.greedy_actions(some)[0]
 

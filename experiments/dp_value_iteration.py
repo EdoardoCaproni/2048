@@ -15,8 +15,8 @@ import numpy as np
 
 from common import out_dir, save_csv, savefig
 
-import dp2048 as dp
-from game2048 import Game2048
+import dynamic_programming as dp
+from game import Game2048
 
 OUT = out_dir('dp')
 CONFIGS = [(2, 2, 16, 'win'), (2, 2, 32, 'win'), (2, 3, 32, 'win'),

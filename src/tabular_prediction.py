@@ -11,23 +11,23 @@ episode the n-step return is the full return and the method is
 constant-alpha Monte Carlo (MC_N below). The error is the square root of
 the prediction objective VE of Sec. 9.2: the squared error weighted by the
 on-policy distribution mu of pi (expected visits per episode from
-dp2048.occupancy, normalised to sum 1).
+dynamic_programming.occupancy, normalised to sum 1).
 
 States never repeat within an episode (the tile sum grows at every move),
 so the updates of an episode can be applied once the episode is over, in
 the order of the online algorithm, with the same result: the value
 V(S_{t+n}) used to bootstrap at time t+n-1 is not changed earlier in the
 same episode. The episodes are generated with the bitboard engine of
-fast2048.py, which follows the same rules as game2048.py.
+game_fast.py, which follows the same rules as game.py.
 """
 import math
 
 import numpy as np
 
-import dp2048 as dp
-import fast2048 as fb
-from fast2048 import njit  # numba imported with the cache directory set
-from game2048 import ACTIONS
+import dynamic_programming as dp
+import game_fast as fb
+from game_fast import njit  # numba imported with the cache directory set
+from game import ACTIONS
 
 ACTION_INDEX = {a: i for i, a in enumerate(ACTIONS)}
 MC_N = 1_000_000  # an n larger than any episode: n-step TD = Monte Carlo

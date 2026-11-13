@@ -54,9 +54,9 @@ import time
 
 import numpy as np
 
-import fast2048 as fb
-from fast2048 import njit  # numba imported with the cache directory set
-from game2048 import ACTIONS
+import game_fast as fb
+from game_fast import njit  # numba imported with the cache directory set
+from game import ACTIONS
 
 REWARD_MODES = {'win': 0, 'score': 1}
 
@@ -354,7 +354,7 @@ class NTupleNet:
         return (ACTIONS[a], float(q)) if a >= 0 else (None, 0.0)
 
     def policy(self, reward='score'):
-        """Policy function for dp2048 / viz2048 (greedy, deterministic)."""
+        """Policy function for dynamic_programming / visualize (greedy, deterministic)."""
         def pi(board, moves):
             if not moves:
                 return {}
@@ -433,7 +433,7 @@ class NTupleNet:
 
 class FrozenPolicy:
     """The greedy policy of a net on a fixed set of boards, with the
-    interface that rl2048.ExactEvaluator expects from an agent."""
+    interface that tabular_control.ExactEvaluator expects from an agent."""
 
     def __init__(self, boards, actions, values, reward):
         self.reward = reward
@@ -462,7 +462,7 @@ class FrozenPolicy:
 
 
 def exact_evaluator(evaluator, game, reward):
-    """Adapter: an rl2048.ExactEvaluator as the evaluator argument of
+    """Adapter: a tabular_control.ExactEvaluator as the evaluator argument of
     NTupleNet.train (evaluates the greedy policy on every decision state
     of the DP in one batched pass)."""
     boards = [b for layer in evaluator.layers_win.values() for b in layer]

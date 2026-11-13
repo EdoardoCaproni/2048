@@ -197,7 +197,7 @@ class Env2048:
                     episode; 0 otherwise.
     reward='score': the points of each move (sum of the merged tiles); the
                     target is ignored and the episode ends at game over.
-    reward=<name>:  a reward of shaping2048.REWARDS, paid like 'score'.
+    reward=<name>:  a reward of shaped_rewards.REWARDS, paid like 'score'.
 
     Only legal actions are allowed: read them from info['legal_actions'] or
     from legal_actions(). info['afterstate'] is the board right after the
@@ -205,7 +205,7 @@ class Env2048:
     """
 
     def __init__(self, game, reward='win', seed=None):
-        from shaping2048 import REWARDS, reward_fn
+        from shaped_rewards import REWARDS, reward_fn
         if reward not in ('win', 'score') + tuple(REWARDS):
             raise ValueError(f"reward must be 'win', 'score' or one of {list(REWARDS)}")
         self.game = game

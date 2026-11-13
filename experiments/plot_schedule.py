@@ -14,9 +14,9 @@ import numpy as np
 
 from common import RESULTS, save_csv, savefig
 
-import dp2048 as dp
-import rl2048 as rl
-from game2048 import Game2048
+import dynamic_programming as dp
+import tabular_control as rl
+from game import Game2048
 from plot_tabular import LABELS, load_runs, series
 
 OUT = RESULTS / 'tabular_grid'

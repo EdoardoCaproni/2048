@@ -43,7 +43,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-from game2048 import ACTIONS
+from game import ACTIONS
 
 N_VALUES = 16          # exponents 0..15 (one-hot channels per cell)
 BATCH_SIZE = 128
@@ -301,10 +301,10 @@ def train(agent, n_episodes, eval_every=1000, evaluator=None, verbose=False,
 
 
 def exact_evaluator(evaluator):
-    """Adapter for a small board: an rl2048.ExactEvaluator applied to the
+    """Adapter for a small board: a tabular_control.ExactEvaluator applied to the
     greedy policy of the network on every board of both DP layer sets (so
     that no board needs a fallback policy). Returns p_win, score, agree."""
-    from ntuple2048 import FrozenPolicy
+    from ntuple_network import FrozenPolicy
     boards = sorted({b for layers in (evaluator.layers_win, evaluator.layers_score)
                      for layer in layers.values() for b in layer})
 

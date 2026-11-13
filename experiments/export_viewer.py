@@ -47,8 +47,8 @@ import numpy as np
 
 from common import RESULTS, ROOT, out_dir, run_grid
 
-import dp2048 as dp
-from game2048 import ACTIONS, Game2048
+import dynamic_programming as dp
+from game import ACTIONS, Game2048
 
 OUT = out_dir('viewer')
 VIEWER = ROOT / 'viewer'
@@ -97,8 +97,8 @@ def job(spec):
     path = OUT / f'{name}.json'
     t0 = time.perf_counter()
     if kind == 'tabular':
-        import rl2048 as rl
-        from game2048 import Env2048
+        import tabular_control as rl
+        from game import Env2048
         game, layers, boards = boards_2x3()
         cfg = spec['cfg']
         env = Env2048(game, reward=cfg['reward'])
@@ -110,8 +110,8 @@ def job(spec):
         info = dict(cfg, episodes=200_000, p_win=res['p_win'], score=res['score'],
                     agree=res['agree'])
     elif kind == 'ntuple_small':
-        import ntuple2048 as nt
-        import rl2048 as rl
+        import ntuple_network as nt
+        import tabular_control as rl
         game, layers, boards = boards_2x3()
         tuples, symmetric, reward, init, seed = NT_SMALL[name]
         net = nt.NTupleNet(2, 3, 64, tuples=tuples, symmetric=symmetric,
@@ -124,7 +124,7 @@ def job(spec):
                     seed=seed, games=300_000, alpha=0.1, p_win=res['p_win'],
                     score=res['score'], agree=res['agree'])
     elif kind == 'ntuple_4x4':
-        import ntuple2048 as nt
+        import ntuple_network as nt
         c = NT_4X4
         net = nt.NTupleNet(4, 4, 2048, tuples=c['tuples'], symmetric=True,
                            dtype=np.float32)
@@ -184,8 +184,8 @@ def write_js(name, obj):
 
 def export_2x3():
     import torch
-    import dqn2048 as dq
-    import rl2048 as rl
+    import dqn_tutorial as dq
+    import tabular_control as rl
     game, layers, boards = boards_2x3()
     ev = rl.ExactEvaluator.cached(game, CACHE)
     V = ev.V_win
@@ -292,8 +292,8 @@ def export_4x4_tabular():
     and plays the corner rule elsewhere; its statistics are those of this
     restricted table, on the same 1 000 games as the full one. Returns the
     metadata for data_4x4.js and the tables for data_4x4_tabular.js."""
-    import fast2048 as fb
-    import rlfast2048 as rf
+    import game_fast as fb
+    import tabular_control_fast as rf
     meta, tables = {}, {}
     for method in rf.METHODS:
         runs = sorted((RESULTS / 'tabular_4x4').glob(f'{method}_s*'))
@@ -333,7 +333,7 @@ def export_4x4_tabular():
 
 
 def export_4x4():
-    import ntuple2048 as nt
+    import ntuple_network as nt
     out = {'rows': 4, 'cols': 4, 'target': 2048, 'p4': 0.1}
     bench = {r['policy']: r for r in csv.DictReader(open(RESULTS / '4x4' / 'benchmarks.csv'))}
     out['rules'] = {k: {'score': round(float(v['mean_score'])),
@@ -372,7 +372,7 @@ def main():
     stages = [a for a in sys.argv[1:] if a in ('2x3', '4x4')] or ['2x3', '4x4']
     specs = []
     if '2x3' in stages:
-        import rl2048 as rl
+        import tabular_control as rl
         rl.ExactEvaluator.cached(Game2048(2, 3, target=64), CACHE)
         for name, cfg in best_tabular_runs().items():
             specs.append({'kind': 'tabular', 'name': name, 'cfg': cfg})

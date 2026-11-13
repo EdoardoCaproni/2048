@@ -20,8 +20,8 @@ import numpy as np
 
 from common import RESULTS, out_dir, run_grid, save_csv, savefig
 
-import rl2048 as rl
-from game2048 import Env2048, Game2048
+import tabular_control as rl
+from game import Env2048, Game2048
 
 BOARD = dict(rows=2, cols=3, target=64)
 N_EPISODES = 200_000

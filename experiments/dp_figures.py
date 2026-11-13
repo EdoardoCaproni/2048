@@ -1,4 +1,4 @@
-"""Figures and tables of the DP part (the analyses of 2048_DP.ipynb) as
+"""Figures and tables of the DP part as
 files for the report, in results/dp/:
     fig_dp_stages.png        reachable states per stage, 2x3 board
     fig_dp_states.png        reachable states per board (log scale)
@@ -18,8 +18,8 @@ import numpy as np
 
 from common import out_dir, save_csv, save_json, savefig
 
-import dp2048 as dp
-from game2048 import Game2048
+import dynamic_programming as dp
+from game import Game2048
 
 OUT = out_dir('dp')
 CONFIGS = [(2, 2, 16), (2, 2, 32), (2, 3, 32), (2, 3, 64), (2, 3, 128),

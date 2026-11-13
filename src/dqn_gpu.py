@@ -1,6 +1,6 @@
 """Deep Q-learning on the GPU, with many games played at the same time.
 
-The agent of dqn2048.py (same network, Huber loss, AdamW with learning rate
+The agent of dqn_tutorial.py (same network, Huber loss, AdamW with learning rate
 3e-4 and amsgrad, gradients clipped at 100, target network soft-updated with
 tau = 0.005 after every gradient step, the epsilon-greedy schedule of the
 PyTorch tutorial, gamma = 0.99, rewards divided by the target tile, illegal
@@ -10,7 +10,7 @@ play many more games:
 
   - n_envs games are played at the same time: the moves of all of them are
     chosen with one forward pass on the GPU, and the rules run in the numba
-    engine of fast2048.py (the same rules as game2048.py);
+    engine of game_fast.py (the same rules as game.py);
   - the replay memory holds the last 1 000 000 moves, as in the paper, on the
     GPU (each board stored as 16 exponents, one-hot encoded when sampled);
   - every move is replayed on average replay_ratio times (8 in the paper:
@@ -27,9 +27,9 @@ import torch.optim as optim
 
 import torch.nn as nn
 
-import fast2048 as fb
-from fast2048 import njit  # numba imported with the cache directory set
-from dqn2048 import DQN, EPS_DECAY, EPS_END, EPS_START, GAMMA, LR, N_VALUES, TAU
+import game_fast as fb
+from game_fast import njit  # numba imported with the cache directory set
+from dqn_tutorial import DQN, EPS_DECAY, EPS_END, EPS_START, GAMMA, LR, N_VALUES, TAU
 
 
 class PairCNN(nn.Module):
@@ -39,7 +39,7 @@ class PairCNN(nn.Module):
     convolutions reads the horizontal and vertical pairs; a second layer
     applies 1x2 and 2x1 convolutions to each of them (pairs of pairs). All the
     maps are flattened and joined, then a hidden layer of 256 units gives the
-    four action values. Same input and output as the perceptron of dqn2048.py,
+    four action values. Same input and output as the perceptron of dqn_tutorial.py,
     so the rest of the agent does not change."""
 
     def __init__(self, rows, cols, channels=128, hidden=256):
@@ -71,7 +71,7 @@ class PairCNN(nn.Module):
 
 
 # ----------------------------------------------------------------------
-# the games, in numba (boards are the uint64 bitboards of fast2048.py)
+# the games, in numba (boards are the uint64 bitboards of game_fast.py)
 # ----------------------------------------------------------------------
 @njit(cache=True)
 def _observe(xs, rows, cols, exps, masks):
@@ -213,7 +213,7 @@ class VecDQN:
 
     def update(self):
         """One gradient step on a minibatch from the memory (the update of
-        dqn2048.DQNAgent.optimize_model) and the soft update of the target."""
+        dqn_tutorial.DQNAgent.optimize_model) and the soft update of the target."""
         idx = torch.randint(0, self.size, (self.batch,), device=self.dev, generator=self.gen)
         s, a, r = self.onehot(self.m_s[idx]), self.m_a[idx], self.m_r[idx]
         s2, m2, done = self.onehot(self.m_s2[idx]), self.m_m2[idx], self.m_done[idx]
@@ -342,9 +342,9 @@ class VecDQN:
 
 def exact_evaluator(evaluator):
     """For a small board: the exact P(win), expected score and share of
-    optimal decisions of the greedy policy (an rl2048.ExactEvaluator applied
+    optimal decisions of the greedy policy (a tabular_control.ExactEvaluator applied
     to every board of both DP layer sets)."""
-    from ntuple2048 import FrozenPolicy
+    from ntuple_network import FrozenPolicy
     boards = sorted({b for layers in (evaluator.layers_win, evaluator.layers_score)
                      for layer in layers.values() for b in layer})
 

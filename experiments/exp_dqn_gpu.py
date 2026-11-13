@@ -1,4 +1,4 @@
-"""DQN on the GPU with many more games (dqn_gpu2048.py): the agent of the
+"""DQN on the GPU with many more games (dqn_gpu.py): the agent of the
 final test, with 1024 games played in parallel, a replay memory of 1 000 000
 moves and every move replayed 8 times on average (minibatches of 1024), as in
 the original DQN paper, instead of the tutorial's 10 000 moves and 128 times.
@@ -42,9 +42,9 @@ def run(cfg):
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
         torch.backends.cudnn.benchmark = True
-    import dqn_gpu2048 as dg
-    import rl2048 as rl
-    from game2048 import Game2048
+    import dqn_gpu as dg
+    import tabular_control as rl
+    from game import Game2048
 
     b = BOARDS[cfg['board']]
     agent = dg.VecDQN(b['rows'], b['cols'], b['target'], n_envs=cfg['n_envs'],
@@ -95,8 +95,8 @@ def main():
     opts = dict(a.split('=', 1) for a in args if '=' in a)
     seeds = [int(s) for s in opts['seeds'].split(',')] if 'seeds' in opts else list(SEEDS)
     if '2x3' in boards:
-        import rl2048 as rl
-        from game2048 import Game2048
+        import tabular_control as rl
+        from game import Game2048
         rl.ExactEvaluator.cached(Game2048(2, 3, target=64), CACHE)
     configs = [{'board': b, 'seed': s, 'games': int(opts.get('games', BOARDS[b]['games'])),
                 'eval_every': int(opts.get('eval_every', BOARDS[b]['eval_every'])),

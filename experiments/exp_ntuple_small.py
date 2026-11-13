@@ -4,7 +4,7 @@ Phase 1 (parallel): every configuration is trained with the numba code
 and the weights are saved at the checkpoints in EVAL_AT.
 Phase 2 (sequential, in the main process because the DP of the bigger
 boards needs about 1.5 GB): every checkpoint is evaluated exactly with
-rl2048.ExactEvaluator (exact P(win) of the greedy policy, agreement with
+tabular_control.ExactEvaluator (exact P(win) of the greedy policy, agreement with
 the optimal policy, weighted RMSE of the values against V*).
 
 Outputs, under results/ntuple_small/<board>/:
@@ -28,10 +28,10 @@ import numpy as np
 
 from common import RESULTS, out_dir, run_grid, save_csv, save_json
 
-import dp2048 as dp
-import ntuple2048 as nt
-import rl2048 as rl
-from game2048 import Game2048
+import dynamic_programming as dp
+import ntuple_network as nt
+import tabular_control as rl
+from game import Game2048
 
 OUT = RESULTS / 'ntuple_small'
 ALPHA = 0.1

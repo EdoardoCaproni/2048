@@ -1,6 +1,6 @@
 /* Rules of 2048 on an R x C board and the policies of the viewer.
  *
- * Same rules as game2048.py: a move slides every row (left/right) or
+ * Same rules as src/game.py: a move slides every row (left/right) or
  * column (up/down) towards the side of the move; equal neighbours merge
  * once, starting from that side; a move is legal only if it changes the
  * board; the new tile is a 2 (probability 1 - p4) or a 4 in a uniformly
@@ -193,7 +193,7 @@
      afterstates met most often in training): q(x,u) = r(x,u) + V[M(x,u)],
      an afterstate without an entry counting 0 (the initial value); a board
      none of whose afterstates has an entry plays the corner rule, as in
-     rl2048.AfterstateSarsa.greedy_action with the corner fallback. */
+     src/tabular_control.py (AfterstateSarsa.greedy_action) with the corner fallback. */
   function afterstateTablePolicy(game, keyIndex, values) {
     const V = (after) => {
       const i = keyIndex.get(game.key(after));
@@ -237,7 +237,7 @@
     return policy;
   }
 
-  /* DQN with the perceptron of dqn2048.py (the tutorial's network): one-hot
+  /* DQN with the perceptron of src/dqn_tutorial.py (the tutorial's network): one-hot
      cells (16 values each) -> 128 -> 128 -> 4 Q-values. */
   function dqnPolicy(d) {
     const L = d.layers.map((l) => ({ w: decodeF32(l.w), b: decodeF32(l.b), in: l.in, out: l.out }));
@@ -282,7 +282,7 @@
     return policy;
   }
 
-  /* DQN with the convolutional network PairCNN of dqn_gpu2048.py. The input
+  /* DQN with the convolutional network PairCNN of src/dqn_gpu.py. The input
      is the one-hot board, 16 channels on the R x C grid; a first layer of
      1x2 (h) and 2x1 (v) convolutions reads the pairs of neighbouring cells,
      a second layer applies 1x2 and 2x1 convolutions to each of these maps

@@ -1,14 +1,14 @@
-"""The six tabular control methods of rl2048.py on the bitboard engine of
-fast2048.py, for boards whose tables do not fit the pure-Python code (the
+"""The six tabular control methods of tabular_control.py on the bitboard engine of
+game_fast.py, for boards whose tables do not fit the pure-Python code (the
 original 4x4 game).
 
 The algorithms, the step size, the epsilon-greedy exploration and the
-tie-breaking are those of rl2048.py (MC control with sample averages, Sarsa,
+tie-breaking are those of tabular_control.py (MC control with sample averages, Sarsa,
 Expected Sarsa, Q-learning, 3-step Sarsa, Sarsa on afterstates; gamma = 1,
 score reward). Only the data structure changes: the table Q[board] -> 4
 action values (V[afterstate] for Sarsa on afterstates) is a hash table keyed
 by the 64-bit board, which holds the boards met in training, added with the
-initial value q_init the first time they are met, exactly when rl2048.py adds
+initial value q_init the first time they are met, exactly when tabular_control.py adds
 them. The values are stored in single precision to save memory.
 
 A board never met in training has no entry: the greedy policy plays there the
@@ -21,9 +21,9 @@ import time
 
 import numpy as np
 
-import fast2048 as fb
-from fast2048 import njit  # numba imported with the cache directory set
-from game2048 import ACTIONS
+import game_fast as fb
+from game_fast import njit  # numba imported with the cache directory set
+from game import ACTIONS
 
 METHODS = ('mc_control', 'sarsa', 'expected_sarsa', 'q_learning', 'nstep_sarsa',
            'afterstate_sarsa')
@@ -73,7 +73,7 @@ def _rehash(keys, vals, visits, N, keys2, vals2, visits2, N2, shift2, with_count
 
 
 # ----------------------------------------------------------------------
-# Action selection (as rl2048.greedy / epsilon_greedy)
+# Action selection (as tabular_control.greedy / epsilon_greedy)
 # ----------------------------------------------------------------------
 @njit(cache=True)
 def _greedy(vals, i, mask):
@@ -146,7 +146,7 @@ def _choose_after(keys, vals, shift, q_init, x, mask, rows, cols, eps, q):
 
 
 # ----------------------------------------------------------------------
-# One learning episode of each method (rl2048.<Agent>.episode)
+# One learning episode of each method (tabular_control.<Agent>.episode)
 # ----------------------------------------------------------------------
 @njit(cache=True)
 def _episode_td(method, rows, cols, p4, alpha, eps, q_init, keys, vals, visits, used, shift):
@@ -407,7 +407,7 @@ def greedy_batch(after_values, boards, rows, cols, q_init, keys, vals, shift):
 # Python side
 # ----------------------------------------------------------------------
 class FastTabular:
-    """A tabular control method of rl2048.py on an R x C board, its table in
+    """A tabular control method of tabular_control.py on an R x C board, its table in
     a hash table that doubles when it fills up."""
 
     def __init__(self, method, rows=4, cols=4, target=2048, p4=0.1, q_init=0.0, seed=0,

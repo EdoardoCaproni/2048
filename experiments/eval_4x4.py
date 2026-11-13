@@ -16,9 +16,9 @@ import numpy as np
 
 from common import RESULTS, run_grid, save_csv
 
-import fast2048 as fb
-import ntuple2048 as nt
-from fast2048 import njit
+import game_fast as fb
+import ntuple_network as nt
+from game_fast import njit
 
 N_EVAL = 1000
 SEED = 12345

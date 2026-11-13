@@ -1,5 +1,5 @@
 """Final test of the RL part: deep Q-learning (DQN) as in the PyTorch tutorial
-(see dqn2048.py), on the 2x3 board with target 64 (exact evaluation of the
+(see dqn_tutorial.py), on the 2x3 board with target 64 (exact evaluation of the
 greedy policy with the DP) and on the original 4x4 game (Monte Carlo
 evaluation). Score reward, as for the other agents.
 
@@ -37,9 +37,9 @@ FINAL_SEED = 2024
 def run(cfg):
     import torch
     torch.set_num_threads(1)
-    import dqn2048 as dq
-    import rl2048 as rl
-    from game2048 import Game2048
+    import dqn_tutorial as dq
+    import tabular_control as rl
+    from game import Game2048
 
     b = BOARDS[cfg['board']]
     game = Game2048(b['rows'], b['cols'], target=b['target'])
@@ -97,8 +97,8 @@ def main():
     scale = float(opts['scale']) if 'scale' in opts else None
     seeds = [int(s) for s in opts['seeds'].split(',')] if 'seeds' in opts else list(SEEDS)
     if '2x3' in boards:  # build the DP evaluator once, the workers load it
-        import rl2048 as rl
-        from game2048 import Game2048
+        import tabular_control as rl
+        from game import Game2048
         rl.ExactEvaluator.cached(Game2048(2, 3, target=64), CACHE)
     device = opts.get('device', 'cpu')
     configs = []

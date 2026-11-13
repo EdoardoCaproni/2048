@@ -1,4 +1,4 @@
-# shaping2048.py
+# shaped_rewards.py
 #
 # Our first idea for a reward, before we settled on 'win' and 'score':
 # pay the agent for the things a good 2048 player tries to do.
@@ -12,7 +12,7 @@
 #   free      : +1 for every cell freed by the move (one per merge) and -1
 #               for the cell the new tile fills, i.e. free(y) - free(x) - 1.
 #
-# Boards are tuples of exponents like in game2048 (0 = empty, k = tile 2**k).
+# Boards are tuples of exponents like in game.py (0 = empty, k = tile 2**k).
 # A reward is a function r(board, after, points) where board is x and after is
 # the afterstate y = M(x, u). It only depends on the move (x, u), like the
 # points do, so the DP and the afterstate agents can use it as it is.

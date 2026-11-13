@@ -2,7 +2,8 @@
 
 Every script in this folder is run from the project root, e.g.
     python experiments/bench_engine.py
-and writes its outputs to results/.
+imports the modules of the project from src/ and writes its outputs to
+results/.
 """
 import json
 import os
@@ -12,9 +13,10 @@ from multiprocessing import Pool
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / 'src'
 RESULTS = ROOT / 'results'
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
 
 import matplotlib  # noqa: E402
 

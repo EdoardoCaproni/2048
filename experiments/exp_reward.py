@@ -1,6 +1,6 @@
 """Choosing the reward: the rules-of-thumb reward against the score and the win.
 
-The "naive" reward of shaping2048 pays a bonus for every new largest
+The "naive" reward of shaped_rewards.py pays a bonus for every new largest
 tile, the growth of the tile sum and the change of the number of free
 cells. Two studies on the 2x3 board with target 64:
 
@@ -25,9 +25,9 @@ import time
 
 from common import RESULTS, out_dir, run_grid, save_csv
 
-import dp2048 as dp
-import rl2048 as rl
-from game2048 import Env2048, Game2048
+import dynamic_programming as dp
+import tabular_control as rl
+from game import Env2048, Game2048
 
 BOARD = dict(rows=2, cols=3, target=64)
 CACHE = RESULTS / 'dp_cache' / 'eval_2x3_64.pkl'

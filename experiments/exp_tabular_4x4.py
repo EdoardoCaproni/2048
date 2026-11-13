@@ -1,5 +1,5 @@
 """The six tabular control methods of the report on the original 4x4 game
-(rlfast2048.py: the algorithms of rl2048.py with the table in a hash table),
+(tabular_control_fast.py: the algorithms of tabular_control.py with the table in a hash table),
 with the settings of the 2x3 runs: score reward, alpha = 0.1 (Monte Carlo
 control: sample averages), epsilon = 0.1, zero initial values, 200 000
 episodes, 5 seeds. The greedy policy plays 200 games (fixed seed) every
@@ -46,7 +46,7 @@ def tag(eps):
 
 
 def run(cfg):
-    import rlfast2048 as rf
+    import tabular_control_fast as rf
     agent = rf.FastTabular(cfg['method'], 4, 4, 2048, seed=cfg['seed'])
     d = out_dir('tabular_4x4', f"{cfg['method']}{tag(cfg['eps'])}_s{cfg['seed']}")
     t0 = time.perf_counter()
@@ -69,10 +69,10 @@ def run(cfg):
 
 def check(cfg):
     """One run of the port check on 2x3."""
-    import dp2048 as dp
-    import rl2048 as rl
-    import rlfast2048 as rf
-    from game2048 import Game2048
+    import dynamic_programming as dp
+    import tabular_control as rl
+    import tabular_control_fast as rf
+    from game import Game2048
     ev = rl.ExactEvaluator.cached(Game2048(2, 3, target=64), RESULTS / 'dp_cache' / 'eval_2x3_64.pkl')
     boards = sorted({b for layers in (ev.layers_win, ev.layers_score)
                      for layer in layers.values() for b in layer})
@@ -107,8 +107,8 @@ def main():
     methods = [a for a in args if a in METHODS] or list(METHODS)
     seeds = [int(s) for s in opts['seeds'].split(',')] if 'seeds' in opts else list(SEEDS)
     if 'check' in args:
-        import rl2048 as rl
-        from game2048 import Game2048
+        import tabular_control as rl
+        from game import Game2048
         rl.ExactEvaluator.cached(Game2048(2, 3, target=64), RESULTS / 'dp_cache' / 'eval_2x3_64.pkl')
         rows = run_grid(check, [{'method': m, 'seed': s} for m in methods for s in seeds],
                         processes=12)

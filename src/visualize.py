@@ -1,15 +1,15 @@
 """Graphics for 2048: draw boards and watch a policy play by itself.
 
-In the notebook:
+In a Jupyter notebook (with src/ on the path):
     from IPython.display import HTML
-    from viz2048 import animate, play_episode
+    from visualize import animate, play_episode
     frames = play_episode(game, dp.table_policy(table), seed=0, V=V)
     HTML(animate(game, frames).to_jshtml())   # player with play/pause/step
 
 From a terminal (a window where the game plays by itself):
-    python viz2048.py                          # optimal policy, 2x3 board, target 64
-    python viz2048.py --rows 3 --cols 3        # 3x3 board (the DP takes ~2 minutes)
-    python viz2048.py --rows 4 --cols 4 --target 2048 --policy corner
+    python src/visualize.py                          # optimal policy, 2x3 board, target 64
+    python src/visualize.py --rows 3 --cols 3        # 3x3 board (the DP takes ~2 minutes)
+    python src/visualize.py --rows 4 --cols 4 --target 2048 --policy corner
 
 Each move is drawn in two frames, as in the formulation: the afterstate
 (tiles slid and merged) and the board after the random tile, which is
@@ -24,8 +24,8 @@ import matplotlib.pyplot as plt
 from matplotlib import animation
 from matplotlib.patches import FancyBboxPatch
 
-import dp2048 as dp
-from game2048 import Game2048
+import dynamic_programming as dp
+from game import Game2048
 
 # Colours of the original game: tile value -> (background, text)
 TILE_COLORS = {

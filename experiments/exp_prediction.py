@@ -22,9 +22,9 @@ import numpy as np
 
 from common import out_dir, save_csv, save_json, savefig
 
-import dp2048 as dp
-import predict2048 as pr
-from game2048 import Game2048
+import dynamic_programming as dp
+import tabular_prediction as pr
+from game import Game2048
 
 OUT = out_dir('prediction')
 BOARD = dict(rows=2, cols=3, target=64)

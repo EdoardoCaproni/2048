@@ -24,14 +24,14 @@ Because the tile sum strictly increases, every state is visited at most
 once per episode: first-visit and every-visit Monte Carlo coincide, and
 gamma = 1 is safe (every episode ends in a bounded number of moves).
 
-Actions are indices 0..3 into game2048.ACTIONS; the greedy choice takes
+Actions are indices 0..3 into game.ACTIONS; the greedy choice takes
 the first maximiser in that order, like the DP, so that policies can be
 compared exactly. Illegal actions are never selected (the environment
 reports the legal ones) and have no effect on the estimates.
 
 Exact validation
 ----------------
-ExactEvaluator uses dp2048 to compute the *exact* value of the learned
+ExactEvaluator uses dynamic_programming to compute the *exact* value of the learned
 greedy policy (policy evaluation by backward recursion), the error of the
 learned values against V*, and how often the greedy action is optimal.
 Learning curves made this way have no Monte Carlo noise.
@@ -43,8 +43,8 @@ from collections import defaultdict
 
 import numpy as np
 
-import dp2048 as dp
-from game2048 import ACTIONS
+import dynamic_programming as dp
+from game import ACTIONS
 
 ACTION_INDEX = {a: i for i, a in enumerate(ACTIONS)}
 METHODS = ('mc_control', 'sarsa', 'q_learning', 'expected_sarsa',
@@ -155,7 +155,7 @@ class TabularAgent:
         return len(self.Q)
 
     def policy(self, fallback=dp.corner_policy):
-        """Policy function for dp2048 (fallback on unseen boards)."""
+        """Policy function for dynamic_programming (fallback on unseen boards)."""
         def pi(board, moves):
             if not moves:
                 return {}
@@ -450,13 +450,18 @@ class ExactEvaluator:
 
     @classmethod
     def cached(cls, game, path, with_score=True):
-        """Load the evaluator from a pickle, or build it and save it."""
+        """Load the evaluator from a pickle, or build it and save it. A
+        pickle that no longer loads (e.g. written before the modules were
+        renamed) is built again."""
         import pickle
         from pathlib import Path
         path = Path(path)
         if path.exists():
-            with open(path, 'rb') as f:
-                return pickle.load(f)
+            try:
+                with open(path, 'rb') as f:
+                    return pickle.load(f)
+            except (ModuleNotFoundError, AttributeError, EOFError, pickle.UnpicklingError):
+                pass
         ev = cls(game, with_score)
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, 'wb') as f:
@@ -464,7 +469,7 @@ class ExactEvaluator:
         return ev
 
     def add_reference(self, reward):
-        """Optimal values of another reward (a name of shaping2048.REWARDS),
+        """Optimal values of another reward (a name of shaped_rewards.REWARDS),
         used as the reference of the value error of agents trained with it."""
         if not hasattr(self, 'V_extra'):
             self.V_extra = {}

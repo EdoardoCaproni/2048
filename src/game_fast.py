@@ -1,6 +1,6 @@
 """Fast 2048 engine: a 64-bit bitboard compiled with numba.
 
-The pure-Python engine in game2048.py is the reference implementation and
+The pure-Python engine in game.py is the reference implementation and
 is used by the exact DP. This module reproduces exactly the same rules for
 the RL part, where millions of moves are needed (4x4 board).
 
@@ -18,13 +18,13 @@ LEFT[w-2, row] and RIGHT[w-2, row] give the row after sliding towards
 column 0 or column w-1, for a row of width w in {2, 3, 4}; PTS_LEFT and
 PTS_RIGHT give the points. Up and down transpose the board, use the
 tables of width R, and transpose back. The tables are built from
-game2048.slide_line, so the two engines agree by construction (see the
-tests in test_2048.py).
+game.slide_line, so the two engines agree by construction (see the
+tests in tests.py).
 
 Random numbers come from numba's own generator (separate from numpy's):
 call seed(s) once per process or block before sampling.
 
-Action indices follow game2048.ACTIONS: 0 down, 1 left, 2 right, 3 up.
+Action indices follow game.ACTIONS: 0 down, 1 left, 2 right, 3 up.
 """
 import os
 from pathlib import Path
@@ -37,7 +37,7 @@ os.environ.setdefault('NUMBA_CACHE_DIR',
                       str(Path.home() / '.numba_cache' / 'progetto_2048'))
 from numba import njit  # noqa: E402
 
-from game2048 import ACTIONS, slide_line  # noqa: E402
+from game import ACTIONS, slide_line  # noqa: E402
 
 ZERO = np.uint64(0)
 MASK4 = np.uint64(0xF)
@@ -49,7 +49,7 @@ def _pack(cells):
 
 
 def _build_tables():
-    """Row tables for widths 2, 3, 4, built from game2048.slide_line.
+    """Row tables for widths 2, 3, 4, built from game.slide_line.
 
     Rows whose padding nibbles (c >= w) are not empty cannot occur on a
     board of width w: they map to themselves. A merge creating a tile
@@ -91,7 +91,7 @@ def cell_index(r, c):
 
 
 def encode(board, rows, cols):
-    """Tuple of exponents (row-major, as in game2048) -> uint64."""
+    """Tuple of exponents (row-major, as in game.py) -> uint64."""
     x = 0
     for r in range(rows):
         for c in range(cols):
@@ -100,7 +100,7 @@ def encode(board, rows, cols):
 
 
 def decode(x, rows, cols):
-    """uint64 -> tuple of exponents (row-major, as in game2048)."""
+    """uint64 -> tuple of exponents (row-major, as in game.py)."""
     x = int(x)
     return tuple((x >> (4 * cell_index(r, c))) & 0xF
                  for r in range(rows) for c in range(cols))
@@ -172,7 +172,7 @@ def transpose(x):
 def move(x, action, rows, cols):
     """Slide/merge in a direction: (afterstate, points, changed).
 
-    action: 0 down, 1 left, 2 right, 3 up (the order of game2048.ACTIONS).
+    action: 0 down, 1 left, 2 right, 3 up (the order of game.ACTIONS).
     A move is legal only if changed is True.
     """
     horizontal = action == 1 or action == 2
