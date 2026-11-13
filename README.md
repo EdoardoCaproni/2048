@@ -220,9 +220,9 @@ Every update improves all the moves, from all the boards, that lead to the same 
 
 ### Exploration
 
-- **ε-greedy:** with probability $`\epsilon`$ a uniformly random legal move, otherwise the move with the largest $`Q`$ (ties broken in the order down, left, right, up, so an agent with all-zero values plays the corner rule).
+- **ε-greedy:** the agent plays a uniformly random legal move with probability $`\epsilon`$, and otherwise the move with the largest $`Q`$ (ties are broken in the order down, left, right, up, so an agent with all-zero values plays the corner rule).
 - **Optimistic initial values:** start every $`Q`$ at 1, the largest possible win probability. Every untried move looks promising until it has been tried, so the agent explores every move once and then follows the best. With the sparse win reward this removes the dead start of a learner that has never seen a win.
-- **Step-size and exploration schedules:** constant α and ε against linearly decaying ones (ε from 0.3 to 0.01, α from 0.2 to 0.02), and a grid over constant values.
+- **Step-size and exploration schedules:** we compare constant α and ε with values that decrease linearly during training (ε from 0.3 to 0.01, α from 0.2 to 0.02), and try a grid of constant values.
 
 ### Exact learning curves
 
