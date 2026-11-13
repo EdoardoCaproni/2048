@@ -67,7 +67,7 @@ V^*(x)=\max_{\pi}\ P^{\pi}\left(\text{the target tile is created}\mid x_0=x\righ
 
 Read it from the inside out. A policy $`\pi`$ is a rule that picks the move on every board. $`P^{\pi}(\dots\mid x_0=x)`$ is the probability of winning when the game starts from the board $`x`$ and the player chooses every move with the policy $`\pi`$: the moves follow the rule, the new tiles are random, and the probability is taken over the new tiles. The maximum is over all the policies, so $`V^*(x)`$ is the win probability of the best possible player starting from $`x`$. Throughout, a star marks a value of the best policy ("optimal").
 
-In the cost form of the course this is a problem with no cost per stage and a terminal cost of 1 for a lost game and 0 for a won game; the optimal cost is $`J^*=1-V^*`$, the smallest probability of losing. For comparison we also study the expected score, with the points $`r(x,u)`$ as the reward of each stage.
+In cost form this is a problem with no cost per stage and a terminal cost of 1 for a lost game and 0 for a won game; the optimal cost is $`J^*=1-V^*`$, the smallest probability of losing. For comparison we also study the expected score, with the points $`r(x,u)`$ as the reward of each stage.
 
 **Bellman equation.** Each move has two steps: first the player chooses a slide, then chance places the new tile. We give a value to the board at both moments:
 - $`V^*(x)`$ is the win probability of the best player from the board $`x`$, the moment *before the player chooses* a move;
@@ -118,7 +118,7 @@ When a board is processed, every board it can lead to has a larger tile sum and 
 
 ### Value iteration
 
-The algorithm of the course for total-cost problems: start from $`V^{(0)}=0`$ and apply the Bellman equation to all the states at every iteration,
+Start from $`V^{(0)}=0`$ and apply the Bellman equation to all the states at every iteration,
 
 ```math
 V^{(i+1)}(x)=\max_{u\in U(x)} W^{(i)}\big(M(x,u)\big),
