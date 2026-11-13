@@ -61,7 +61,7 @@ NT_SMALL = {  # name -> (tuples, symmetric, reward, init, seed); not in the repo
 }
 NT_4X4 = dict(tuples='rcs', alpha=0.1, seed=0, games=300_000)
 GROUP_DQN = 'Deep RL (final test)'
-GROUP_EXTRA = 'Not in the report'
+GROUP_EXTRA = 'Extra'
 
 
 def num(n):
@@ -239,7 +239,7 @@ def export_2x3():
     d = json.loads((OUT / 'ntuple_sarsa.json').read_text())
     add('ntuple_sarsa', GROUP_EXTRA, 'Semi-gradient Sarsa, n-tuple features',
         d['actions'], d['info']['p_win'], d['info']['score'],
-        'the approach of the n-tuple players of the literature (report, Section 7); '
+        'the approach of the n-tuple players of the literature (Szubert & Jaśkowski 2014); '
         'rows, columns, squares; 300 000 games, win reward, optimistic, seed 2')
     write_js('2x3', {'rows': 2, 'cols': 3, 'target': 64, 'p4': game.p4,
                      'keys': ''.join(board_key(b) for b in boards),
@@ -362,8 +362,8 @@ def export_4x4():
         out['ntuple'] = {'k': int(net.k), 'cells': net.cells.tolist(), 'owner': net.owner.tolist(),
                          'rows': int(net.W.shape[0]), 'W': b64(net.W),
                          'stats': {k: info[k] for k in info if k.startswith('eval_')},
-                         'note': f"the approach of the n-tuple players of the literature (report, "
-                                 f"Section 7), with 4-tuples (rows, columns, squares); alpha {info['alpha']}, "
+                         'note': f"the approach of the n-tuple players of the literature (Szubert & "
+                                 f"Jaśkowski 2014), with 4-tuples (rows, columns, squares); alpha {info['alpha']}, "
                                  f"{num(info['games'])} games, score reward, seed {info['seed']}"}
     write_js('4x4', out)
 

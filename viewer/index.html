@@ -3,10 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<!-- artifact:start -->
 <title>2048 Policy Viewer</title>
 <meta name="description" content="The policies of the project 2048 as a Markov decision problem playing by themselves: exact dynamic programming, tabular reinforcement learning and deep Q-networks.">
-<meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
 /* Layout: a lab instrument. The board is the specimen on the left with
@@ -243,8 +241,8 @@ footer.foot a { color: var(--ink); text-underline-offset: 2px; }
 </main>
 
 <footer class="wrap foot">
-  <p>Data written by <code>experiments/export_viewer.py</code>. The tabular agents are retrained with the configuration and the seed of the best run of each method in the report; the deep Q-networks of the final test are the saved networks of the best seed of each configuration. On the 2×3 board every policy is a table over the 27 022 decision states, and its P(win) is exact (policy evaluation by dynamic programming); on boards a learned table never visited, the corner rule plays. On the 4×4 board the tabular methods, with the settings of the 2×3 runs, end their 200 000 episodes with tables of tens of millions of boards, nearly all met only once: the page uses the 50 000 boards met most often by the best seed, and plays the corner rule elsewhere; their statistics are those of these tables. The page computes the moves of the networks itself, the convolutional one with its 2 million weights in half precision. The agents marked “Not in the report” use the n-tuple features of the strongest players of the literature, which the report only cites.</p>
-  <p>Project: 2048 as a Markov decision problem, Dynamic Programming and Reinforcement Learning, University of Siena, by Edoardo Caproni and Tommaso Quintabà. <a href="https://github.com/EdoardoCaproni/2048">Code and report</a>.</p>
+  <p>Data written by <code>experiments/export_viewer.py</code>. The tabular agents are retrained with the configuration and the seed of the best run of each method; the deep Q-networks of the final test are the saved networks of the best seed of each configuration. On the 2×3 board every policy is a table over the 27 022 decision states, and its P(win) is exact (policy evaluation by dynamic programming); on boards a learned table never visited, the corner rule plays. On the 4×4 board the tabular methods, with the settings of the 2×3 runs, end their 200 000 episodes with tables of tens of millions of boards, nearly all met only once: the page uses the 50 000 boards met most often by the best seed, and plays the corner rule elsewhere; their statistics are those of these tables. The page computes the moves of the networks itself, the convolutional one with its 2 million weights in half precision. The agents marked “Extra” use the n-tuple features of the strongest players of the literature (Szubert &amp; Jaśkowski 2014), outside the main line of the project.</p>
+  <p>Project: 2048 as a Markov decision problem, Dynamic Programming and Reinforcement Learning, University of Siena, by Edoardo Caproni and Tommaso Quintabà. <a href="https://github.com/EdoardoCaproni/2048">Code</a>.</p>
 </footer>
 
 <script src="engine.js"></script>
@@ -355,7 +353,7 @@ footer.foot a { color: var(--ink); text-underline-offset: 2px; }
     }
     if (d.ntuple) {
       const s = d.ntuple.stats;
-      pol.push({ id: 'ntuple', group: 'Not in the report', label: 'Semi-gradient Sarsa, n-tuple features',
+      pol.push({ id: 'ntuple', group: 'Extra', label: 'Semi-gradient Sarsa, n-tuple features',
                  note: d.ntuple.note, stat: `${fmt(s.eval_score)} pts`, kind: 'ntuple',
                  stats: [['Mean score (1 000 games)', fmt(s.eval_score)], ['Reaches 1024', pct(s.eval_p1024)],
                          ['Reaches 2048', pct(s.eval_p2048)], ['Reaches 4096', pct(s.eval_p4096)]],
@@ -939,7 +937,7 @@ footer.foot a { color: var(--ink); text-underline-offset: 2px; }
     $('b-4x4').setAttribute('aria-pressed', String(id === '4x4'));
     $('gauge').hidden = id !== '2x3';
     const pols = boards[id].policies;
-    if (!pols.some((p) => p.id === S.policy[id])) {  // default: the best policy of the report
+    if (!pols.some((p) => p.id === S.policy[id])) {  // default: the best policy found
       S.policy[id] = id === '2x3' ? 'optimal' : (pols.find((p) => p.id === 'dqn_cnn') || pols[0]).id;
     }
     renderPolicyList();
@@ -1005,12 +1003,6 @@ footer.foot a { color: var(--ink); text-underline-offset: 2px; }
     else if (ev.key === 'n' || ev.key === 'N') { $('new').click(); }
   });
 
-  // keep the viewer's choices across a republish of the page
-  const hot = window.claude && window.claude.hot;
-  if (hot && hot.snapshot) {
-    hot.snapshot(() => ({ board: S.board, policy: S.policy, seed: S.seed, speedIdx: S.speedIdx,
-                          showAfter: S.showAfter, auto: S.auto }));
-  }
   function start(saved) {
     saved = saved || {};
     if (!boards['2x3']) {
@@ -1026,9 +1018,8 @@ footer.foot a { color: var(--ink); text-underline-offset: 2px; }
     selectBoard('2x3');
     if (saved.board === '4x4') selectBoard('4x4');
   }
-  if (hot && hot.ready) hot.ready(start); else start(hot && hot.data);
+  start();
 })();
 </script>
-<!-- artifact:end -->
 </body>
 </html>

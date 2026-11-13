@@ -26,3 +26,7 @@ results/dp_cache/
 
 # full training states of the GPU DQN (replay memory included, 50-90 MB each)
 results/**/state.pt
+
+# report and study notes: kept local, not published
+report/
+notes/

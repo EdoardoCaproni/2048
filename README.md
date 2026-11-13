@@ -1,7 +1,6 @@
 # 2048 as a Markov decision problem
 
 Project work for *Dynamic Programming and Reinforcement Learning* (University of Siena, A.Y. 2024/25), by Edoardo Caproni and Tommaso Quintabà.
-The full report is [`report/report.pdf`](report/report.pdf).
 
 **▶ Watch the agents play in the browser: [edoardocaproni.github.io/2048](https://edoardocaproni.github.io/2048/).** In this policy viewer the best policy found by every method plays: on the 2x3 board with the exact optimal win probability of every position and move, on the original 4x4 game with the tabular methods and the deep Q-networks of the final test.
 
@@ -227,7 +226,7 @@ This is exact, not an approximation: the true value of a move depends on $`(x,u)
 V(Y_t)\leftarrow V(Y_t)+\alpha\big[r(S_{t+1},A_{t+1})+V(Y_{t+1})-V(Y_t)\big].
 ```
 
-Every update improves all the moves, from all the boards, that lead to the same afterstate, which is why this method learns fastest. The same update with a linear approximation of $`V`$ is the core of the strongest published 2048 players (Szubert & Jaśkowski 2014 and their successors; see the report, Section 7).
+Every update improves all the moves, from all the boards, that lead to the same afterstate, which is why this method learns fastest. The same update with a linear approximation of $`V`$ is the core of the strongest published 2048 players (Szubert & Jaśkowski 2014 and their successors).
 
 ### Exploration
 
@@ -277,7 +276,7 @@ Here $`(x,u,r,x')`$ is a stored transition (board, move, points, next board) and
 
 Win probabilities on 2x3 are exact and averaged over the seeds; scores on 4x4 are means over 1,000 games (10,000 for the rules) and over the seeds (five for the tabular methods, three for the DQN, two for the convolutional network).
 
-**The tabular methods on the 4x4 game** (report, Section 6.5). The six methods run on the original game unchanged, with the settings of the 2x3 runs (score reward, alpha 0.1, MC control with sample averages, epsilon 0.1, 200,000 episodes, 5 seeds). `rlfast2048.py` holds the same algorithms as `rl2048.py` with the table in a hash table keyed by the 64-bit board; on 2x3, with the settings of Table 7 of the report, its exact win probabilities agree with the report within the spread of the seeds (`results/tabular_4x4/port_check_2x3.csv`). After 200,000 episodes each table holds 23-28 million boards, nearly all met only once, and in a new game 69-74% of the moves fall on boards never met in training (50% for Sarsa on afterstates, which needs one known afterstate out of four). There the table has no value and the corner rule plays: all six methods stay below the corner rule itself (2,564 points), and more training does not raise the score. More exploration makes it worse: with epsilon 0.2 and 0.3 every method scores less and meets fewer of the boards of its own greedy play, because the random moves scatter the training games over boards that the greedy policy never meets. A table cannot generalise from one board to another: this is the curse of dimensionality that the report measures with the state counts, and the reason why the final test needs a network that generalises.
+**The tabular methods on the 4x4 game.** The six methods run on the original game unchanged, with the settings of the 2x3 runs (score reward, alpha 0.1, MC control with sample averages, epsilon 0.1, 200,000 episodes, 5 seeds). `rlfast2048.py` holds the same algorithms as `rl2048.py` with the table in a hash table keyed by the 64-bit board; on 2x3, with the same settings, its exact win probabilities agree with those of `rl2048.py` within the spread of the seeds (`results/tabular_4x4/port_check_2x3.csv`). After 200,000 episodes each table holds 23-28 million boards, nearly all met only once, and in a new game 69-74% of the moves fall on boards never met in training (50% for Sarsa on afterstates, which needs one known afterstate out of four). There the table has no value and the corner rule plays: all six methods stay below the corner rule itself (2,564 points), and more training does not raise the score. More exploration makes it worse: with epsilon 0.2 and 0.3 every method scores less and meets fewer of the boards of its own greedy play, because the random moves scatter the training games over boards that the greedy policy never meets. A table cannot generalise from one board to another: this is the curse of dimensionality already visible in the state counts of Part 1, and the reason why the final test needs a network that generalises.
 
 | Tabular method on 4x4 | epsilon 0.1 | epsilon 0.2 | epsilon 0.3 |
 |---|---|---|---|
@@ -318,9 +317,9 @@ python test_2048.py             # about one minute: rules, DP, engines, learning
 | `rlfast2048.py` | The same six tabular methods on the bitboard engine, with the table in a hash table keyed by the 64-bit board, for the 4x4 game (over a million moves per second) |
 | `dqn2048.py` | Final test: DQN as in the PyTorch tutorial (replay memory, target network, Huber loss, AdamW), with legal-move masking; needs PyTorch |
 | `dqn_gpu2048.py` | The same agent on the GPU with 1,024 games at once (rules in the numba engine), a replay memory of a million moves, the perceptron or a convolutional network (`PairCNN`); needs PyTorch with CUDA |
-| `ntuple2048.py` | Not part of the report: a re-implementation of the n-tuple players of the literature (semi-gradient Sarsa on afterstates with binary n-tuple features), kept for exploration and used by the 4x4 policy viewer |
+| `ntuple2048.py` | Extra, outside the main line of the project: a re-implementation of the n-tuple players of the literature (semi-gradient Sarsa on afterstates with binary n-tuple features), kept for exploration and used by the 4x4 policy viewer |
 | `viz2048.py` | Animations of the policies playing (`python viz2048.py -h`) |
-| `viewer/` | Policy viewer, online at https://edoardocaproni.github.io/2048/ or opened locally (`viewer/index.html`): the best policy of every method plays. On the 2x3 board every policy is a table over the decision states, shown with the exact optimal win probability of every position and move; on the 4x4 board the page plays the rules of thumb, the six tabular methods (the 50,000 boards each table met most often in training, the corner rule elsewhere), the three DQNs of the final test (the convolutional network with its weights in half precision) and an n-tuple player that is not part of the report. Data written by `experiments/export_viewer.py`; the page loads the 4x4 agents (8 MB) only when that board is chosen, and the tables (5 MB) only when one of them is |
+| `viewer/` | Policy viewer, online at https://edoardocaproni.github.io/2048/ or opened locally (`viewer/index.html`): the best policy of every method plays. On the 2x3 board every policy is a table over the decision states, shown with the exact optimal win probability of every position and move; on the 4x4 board the page plays the rules of thumb, the six tabular methods (the 50,000 boards each table met most often in training, the corner rule elsewhere), the three DQNs of the final test (the convolutional network with its weights in half precision) and an extra n-tuple player. Data written by `experiments/export_viewer.py`; the page loads the 4x4 agents (8 MB) only when that board is chosen, and the tables (5 MB) only when one of them is |
 | `.github/workflows/pages.yml` | Publishes `viewer/` as the GitHub page at every push to `main` that changes it. One-time setup by the owner of the repository: Settings > Pages > Build and deployment > Source: GitHub Actions |
 | `2048_DP.ipynb` | Notebook of Part 1 |
 
@@ -340,7 +339,7 @@ python experiments/exp_tabular_2x3.py       # tabular methods, 90 runs x 200k ep
 python experiments/plot_tabular.py
 python experiments/exp_tabular_grid.py      # alpha x epsilon grid and decaying schedules (130 runs)
 python experiments/plot_schedule.py
-python experiments/exp_tabular_4x4.py check # the fast tabular code on 2x3, exact P(win) against the report (a minute)
+python experiments/exp_tabular_4x4.py check # the fast tabular code on 2x3, exact P(win) against rl2048.py (a minute)
 python experiments/exp_tabular_4x4.py       # the six tabular methods on 4x4, 5 seeds x 200k episodes (3 min, 3 GB of RAM per process)
 python experiments/exp_tabular_4x4.py eps=0.2,0.3   # the same with more exploration (6 min)
 python experiments/plot_tabular_4x4.py
@@ -352,7 +351,7 @@ python experiments/plot_dqn_gpu.py
 python experiments/export_viewer.py         # data of the viewer: retrains the best tabular policies, exports the DQN networks (a few minutes; the 4x4 n-tuple player trains for about 1 h the first time)
 ```
 
-Not part of the report (exploration of the n-tuple players of the literature):
+Extra (exploration of the n-tuple players of the literature):
 
 ```
 python experiments/exp_ntuple_small.py      # semi-gradient Sarsa, n-tuple features, on 2x3, 2x4, 3x3 with exact validation
@@ -360,5 +359,3 @@ python experiments/plot_ntuple_small.py
 python experiments/exp_4x4.py               # 4x4 training grid, 300k games per run (hours; '100000 rcs' for a short run)
 python experiments/plot_4x4.py
 ```
-
-The report is compiled with `pdflatex` and `bibtex` in `report/` after copying the figures from `results/` (`python experiments/collect_figures.py`).
