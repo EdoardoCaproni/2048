@@ -23,6 +23,7 @@ Project work for *Dynamic Programming and Reinforcement Learning* (University of
    - [Exploration](#exploration)
    - [Exact learning curves](#exact-learning-curves)
    - [Final test: deep Q-network](#final-test-deep-q-network)
+   - [Extra: Sarsa with n-tuple features](#extra-sarsa-with-n-tuple-features)
 4. [Main results](#main-results)
 5. [Repository](#repository)
 
@@ -242,6 +243,22 @@ Outside the methods of the course, the RL part ends with a deep Q-network built 
 ```
 
 Here $`(x,u,r,x')`$ is a stored transition (board, move, points, next board), $`\gamma<1`$ is a discount that weighs later rewards less, and the Huber loss is the squared error for small errors and the absolute error for large ones, so a few large errors do not dominate the gradient. The input is the one-hot encoding of the exponent of every cell; illegal moves are masked. It is tested on the 2x3 board, where it is evaluated exactly, and on the original 4x4 game. With the tutorial's schedule (one gradient step per move) it is slow: 2,314 points after 10,000 games of the 4x4 game, below the rules of thumb. Playing 1,024 games at once on a GPU, with a replay memory of a million moves (as in the original DQN), it reaches 0.871 of games won on 2x3 and 8,862 points on 4x4 after 100,000 games; with a convolutional network over the pairs of neighbouring cells, 17,485 points and the 2048 tile in 36% of the games. Neither curve is still rising at 100,000 games, and the n-tuple players of the literature, which are given the slide rule through the afterstates, stay far ahead (2048 in over 97% of the games).
+
+### Extra: Sarsa with n-tuple features
+
+Also outside the methods of the course, and not part of the report: we re-implemented the n-tuple players of the literature (Szubert & Jaśkowski 2014), the method behind the strongest published 2048 players, to see how it works. It is Sarsa on afterstates with the table over whole boards replaced by a sum of small tables:
+
+```math
+V(y;w)=\sum_{m=1}^{M} w_m\big[\text{index}_m(y)\big].
+```
+
+An n-tuple is a fixed group of $`n`$ cells, for example a row. For each of the $`M`$ tuples, $`\text{index}_m(y)`$ reads the exponents found in its cells as a single number, and $`w_m`$ is the tuple's own table of weights, one weight for every possible content of those cells. The value of an afterstate is the sum of the $`M`$ weights its tuples point to. Two boards with the same content in a row share the weight of that row, so what is learned on one board carries over to boards never seen: the generalisation that the tabular methods lack on the 4x4 game. The update is the one of Sarsa on afterstates, applied to the $`M`$ weights that $`Y_t`$ points to, each moved by $`\alpha/M`$ times the error (semi-gradient Sarsa, Sutton & Barto §10.1):
+
+```math
+w_m\big[\text{index}_m(Y_t)\big]\leftarrow w_m\big[\text{index}_m(Y_t)\big]+\frac{\alpha}{M}\big[r(S_{t+1},A_{t+1})+V(Y_{t+1};w)-V(Y_t;w)\big],\qquad m=1,\dots,M.
+```
+
+We ran it on the 2x3, 2x4 and 3x3 boards, where the DP measures every learned policy exactly, and on the 4x4 game, where it is the extra n-tuple player of the policy viewer. The code is in `ntuple2048.py`, the scripts under "Extra" in [Reproducing the results](#reproducing-the-results).
 
 ## Main results
 
