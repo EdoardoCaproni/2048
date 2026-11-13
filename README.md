@@ -314,9 +314,9 @@ The first part pays the value of the largest tile when the move creates a new la
 - **free cells:** the changes add up to $`-|E(x_0)|`$, because a lost game ends on a full board. It is a constant, so it cannot change the best policy (it shifts every value $`V(x)`$ by exactly $`-|E(x)|`$);
 - **new largest tile:** the bonuses add up to about twice the largest tile reached, a graded version of the win.
 
-**In the code.** `board` is $`x`$, `after` is $`y=M(x,u)`$ and `points` is $`r(x,u)`$. `milestone` is the first part, `2 + 2 * p4` the second, `free_change` the third; `naive_nofree` drops the third, to test that it changes no decision:
+**In the code.** Every reward is a function `r(board, after, points)` of the move: `board` is $`x`$, `after` is $`y=M(x,u)`$ and `points` is the score of the move. `count_free` is $`|E(\cdot)|`$, `milestone` is the first part (new largest tile) and `free_change` the third (change in free cells):
 
-[src/shaped_rewards.py, lines 36-71](src/shaped_rewards.py#L36-L71): `count_free`, `milestone`, `free_change`, `reward_fn`
+[src/shaped_rewards.py, lines 36-51](src/shaped_rewards.py#L36-L51): `count_free`, `milestone`, `free_change`
 
 ```python
 def count_free(board):
@@ -335,33 +335,74 @@ def milestone(board, after):
 
 def free_change(board, after):
     return count_free(after) - count_free(board) - 1
+```
 
+and their sum. `2 + 2 * p4` is the second part; the variant `naive_nofree` leaves out the third, to test that it changes no decision:
 
+[src/shaped_rewards.py, lines 61-71](src/shaped_rewards.py#L61-L71): `reward_fn`
+
+```python
+def r(board, after, points):
+    value = 0.0
+    if name in ('naive', 'naive_nofree', 'sum'):
+        value += 2 + 2 * p4
+    if name in ('naive', 'naive_nofree', 'milestone'):
+        value += milestone(board, after)
+    if name in ('naive', 'free'):
+        value += free_change(board, after)
+    return value
+
+return r
+```
+
+The exact DP confirms it on the 2x3 board: the optimal policy of the naive reward wins 0.9387 of the games, exactly as the score-optimal policy, against 0.9393 for the win-optimal one; with or without the free-cell part it picks the same move on all 68,340 boards. Trained with the naive reward, Sarsa on afterstates learns as fast as with the score (0.797 against 0.796 after 200,000 episodes). The naive reward works, but no better than the score, which the game provides and which has no weights to tune. We therefore use two rewards.
+
+**Win.** $`+1`$ for the move that creates the target, which ends the game, and 0 for every other move:
+
+```math
+r_{\text{win}}(x,u)=\mathbf{1}\big[\max_i y_i=K\big],\qquad y=M(x,u).
+```
+
+In RL the *return* of a game is the sum of the rewards collected until it ends, and the *value* $`v_\pi(x)`$ of a board is the expected return when the game continues from $`x`$ with the policy $`\pi`$. With this reward the return is 1 for a won game and 0 for a lost one, and the expected value of something that is either 1 or 0 is the probability that it is 1. So $`v_\pi(x)`$ is the win probability of $`\pi`$ from $`x`$, and the best value $`v_*(x)=\max_\pi v_\pi(x)`$ is the best win probability: exactly the $`V^*(x)`$ computed by the DP. The learners therefore aim at the very numbers of Part 1, which is why we can measure them exactly. This reward is the goal itself, but sparse: random play wins 2 games in 10,000 on the 2x3 board.
+
+**Score.** The points of the move: every merge of two tiles $`2^k`$ creates a tile $`2^{k+1}`$ and pays its value,
+
+```math
+r_{\text{score}}(x,u)=r(x,u)=\sum_{\text{merges of the move}}2^{k+1},
+```
+
+where $`k`$ is the exponent of the two tiles of each merge. The game does not stop at the target: it goes on until no legal move is left. The return is the points scored from the board $`x`$ to the end of the game (the whole score, for a game counted from its start), so $`v_*`$ is the $`V^*_{\text{score}}`$ of the DP. It is dense and almost aligned with the goal: the score-optimal policy makes the win-optimal move in 97.9% of the decisions.
+
+**In the code.** The points are computed line by line during the slide: two equal tiles of exponent `tiles[i]` merge into one of exponent `tiles[i] + 1`, and `points` grows by $`2^{k+1}`$:
+
+[src/game.py, lines 33-43](src/game.py#L33-L43): `slide_line`
+
+```python
+tiles = [e for e in line if e]
+merged, points, i = [], 0, 0
+while i < len(tiles):
+    if i + 1 < len(tiles) and tiles[i] == tiles[i + 1]:
+        merged.append(tiles[i] + 1)
+        points += 2 ** (tiles[i] + 1)
+        i += 2
+    else:
+        merged.append(tiles[i])
+        i += 1
+return tuple(merged) + (0,) * (len(line) - len(merged)), points
+```
+
+As a reward function, the score just returns them:
+
+[src/shaped_rewards.py, lines 54-57](src/shaped_rewards.py#L54-L57): `reward_fn`
+
+```python
 def reward_fn(name, p4):
     """Returns r(board, after, points) for 'score' or one of REWARDS."""
     if name == 'score':
         return lambda board, after, points: points
-    if name not in REWARDS:
-        raise ValueError('unknown reward: ' + repr(name))
-
-    def r(board, after, points):
-        value = 0.0
-        if name in ('naive', 'naive_nofree', 'sum'):
-            value += 2 + 2 * p4
-        if name in ('naive', 'naive_nofree', 'milestone'):
-            value += milestone(board, after)
-        if name in ('naive', 'free'):
-            value += free_change(board, after)
-        return value
-
-    return r
 ```
 
-The exact DP confirms it on the 2x3 board: the optimal policy of the naive reward wins 0.9387 of the games, exactly as the score-optimal policy, against 0.9393 for the win-optimal one; with or without the free-cell part it picks the same move on all 68,340 boards. Trained with the naive reward, Sarsa on afterstates learns as fast as with the score (0.797 against 0.796 after 200,000 episodes). The naive reward works, but no better than the score, which the game provides and which has no weights to tune. We therefore use two rewards:
-- **win:** $`+1`$ for the move that creates the target (which ends the game), 0 for every other move. In RL the *return* of a game is the sum of the rewards collected until it ends, and the *value* $`v_\pi(x)`$ of a board is the expected return when the game continues from $`x`$ with the policy $`\pi`$. With this reward the return is 1 for a won game and 0 for a lost one, and the expected value of something that is either 1 or 0 is the probability that it is 1. So $`v_\pi(x)`$ is the win probability of $`\pi`$ from $`x`$, and the best value $`v_*(x)=\max_\pi v_\pi(x)`$ is the best win probability: exactly the $`V^*(x)`$ computed by the DP. The learners therefore aim at the very numbers of Part 1, which is why we can measure them exactly. This reward is the goal itself, but sparse: random play wins 2 games in 10,000 on the 2x3 board.
-- **score:** the points $`r(x,u)`$ of each move. The return is the points scored from the board $`x`$ to the end of the game (the whole score, for a game counted from its start), so $`v_*`$ is the $`V^*_{\text{score}}`$ of the DP. It is dense and almost aligned with the goal: the score-optimal policy makes the win-optimal move in 97.9% of the decisions.
-
-**In the code.** The simulator pays the reward of each move. With the win reward, a move that creates the target pays 1 and ends the game, and every other move pays 0 (`reward_fn` is `None`); with any other reward, `reward_fn` is the function above, and for the score it returns `points`. The reward is computed before the new tile appears, so it is exactly $`r(x,u)`$:
+The simulator pays the reward of each move. With the win reward, a move that creates the target pays 1 and ends the game, and every other move pays 0 (`reward_fn` is `None`); with any other reward it pays `reward_fn` of the move. The reward is computed before the new tile appears, so it depends on the move $`(x,u)`$ alone:
 
 [src/game.py, lines 226-240](src/game.py#L226-L240): `Env2048.step`
 
@@ -381,6 +422,33 @@ def step(self, action):
     legal = self.legal_actions()
     return self.board, reward, not legal, False, {
         'won': False, 'afterstate': after, 'legal_actions': legal}
+```
+
+In the DP the win reward is not a stage reward: it is the terminal value 1 of an afterstate holding the target, in `afterstate_value` above. Every other reward is added to the value of the afterstate, in the line `q = w if r is None else w + r(board, after, points)` of `solve_optimal`:
+
+[src/dynamic_programming.py, lines 41-45](src/dynamic_programming.py#L41-L45): `_stage_reward`
+
+```python
+def _stage_reward(game, objective):
+    """r(board, afterstate, points) of an objective, or None for 'win'
+    (whose only reward is the terminal one, inside afterstate_value)."""
+    _check(objective)
+    return None if objective == 'win' else reward_fn(objective, game.p4)
+```
+
+The compiled engine of the 4x4 runs (`reward_mode` 0 is the win, 1 the score) pays the same two rewards:
+
+[src/game_fast.py, lines 271-278](src/game_fast.py#L271-L278): `env_step`
+
+```python
+after, points, changed = move(x, action, rows, cols)
+created = max_exp(after, rows, cols) >= target_exp
+if reward_mode == 0 and created:
+    return after, 1.0, True, after, True
+nxt = spawn(after, rows, cols, p4)
+terminal = legal_mask(nxt, rows, cols) == 0
+reward = float(points) if reward_mode == 1 else 0.0
+return nxt, reward, terminal, after, created
 ```
 
 Every policy is measured by its exact win probability, whatever reward it learned from.
@@ -730,6 +798,20 @@ Outside the methods of the course, the RL part ends with a deep Q-network built 
 ```
 
 Here $`(x,u,r,x')`$ is a stored transition (board, move, points, next board), $`\gamma<1`$ is a discount that weighs later rewards less, and the Huber loss is the squared error for small errors and the absolute error for large ones, so a few large errors do not dominate the gradient. The input is the one-hot encoding of the exponent of every cell; illegal moves are masked.
+
+The reward is the score, divided by the target tile so that the returns are of order one:
+
+```math
+r=\frac{r_{\text{score}}(x,u)}{2^K}.
+```
+
+Scaling every reward by the same number scales every $`Q`$ by it too, so the greedy policy does not change. In the code, when a transition is stored in the replay memory (`self.reward_scale` is the target tile, 64 on 2x3 and 2048 on 4x4):
+
+[src/dqn_tutorial.py, lines 202-202](src/dqn_tutorial.py#L202-L202): `DQNAgent.train_episode`
+
+```python
+self.memory.push(obs, a, points / self.reward_scale, obs2, mask2, done)
+```
 
 **In the code.** `s, a, r, s2` is a minibatch of transitions $`(x,u,r,x')`$; `m2` marks the legal moves of $`x'`$, so the maximum runs over them only, and `done` sets the target to $`r`$ alone when $`x'`$ is game over. `F.smooth_l1_loss` is PyTorch's Huber loss:
 
